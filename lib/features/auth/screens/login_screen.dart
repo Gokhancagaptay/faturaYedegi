@@ -115,8 +115,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       _buildLogo(context),
                       SizedBox(height: screenSize.height * betweenGapFactor),
                       _buildLoginForm(context),
-                      const SizedBox(height: 32),
-                      _buildFooter(context),
                     ],
                   ),
                 ),
@@ -335,64 +333,6 @@ class _LoginScreenState extends State<LoginScreen> {
               fontWeight: FontWeight.bold,
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFooter(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          height: 48,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).primaryColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              elevation: 3,
-              shadowColor: Colors.black.withOpacity(0.15),
-            ),
-            onPressed: _isLoading ? null : _login,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: _isLoading
-                  ? const SizedBox(
-                      key: ValueKey('progress'),
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Giriş Yap', key: ValueKey('label')),
-            ),
-          ),
-        ),
-        const SizedBox(height: 24),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Hesabınız yok mu? ',
-              style: TextStyle(color: Color(0xFF323232)),
-            ),
-            GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                );
-              },
-              child: Text(
-                'Kayıt Ol',
-                style: TextStyle(
-                  color: Theme.of(context).primaryColor,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
         ),
       ],
     );

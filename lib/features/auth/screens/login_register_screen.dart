@@ -89,7 +89,7 @@ class LoginRegisterScreen extends StatelessWidget {
           _buildLogoAndTitle(
               context), // Metot ismi daha açıklayıcı hale getirildi.
           const Spacer(flex: 2),
-          _buildButtons(context),
+          _buildAuthButtons(context, isWeb: false),
           const Spacer(flex: 1),
         ],
       ),
@@ -124,7 +124,7 @@ class LoginRegisterScreen extends StatelessWidget {
 
   Widget _buildWebButtons(BuildContext context, ThemeData theme) {
     return Container(
-      padding: EdgeInsets.all(40),
+      padding: const EdgeInsets.all(40),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -136,8 +136,8 @@ class LoginRegisterScreen extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 32),
-          _buildButtons(context),
+          const SizedBox(height: 32),
+          _buildAuthButtons(context, isWeb: true),
         ],
       ),
     );
@@ -155,20 +155,18 @@ class LoginRegisterScreen extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         Text(
-          "Scanner",
+          "Fatura Tarayıcı",
           style: theme.textTheme.displayLarge?.copyWith(
             color: Colors.white,
-            fontSize:
-                52, // DEĞİŞİKLİK: Daha vurgulu bir görünüm için font boyutu artırıldı.
+            fontSize: 52,
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 8),
         Text(
-          "No more paper receipt!",
+          "Kağıt fişlere veda edin!",
           style: theme.textTheme.bodyLarge?.copyWith(
-            color: Colors.white
-                .withOpacity(0.85), // DEĞİŞİKLİK: Görünürlük hafifçe artırıldı.
+            color: Colors.white.withOpacity(0.85),
             fontSize: 16,
           ),
         ),
@@ -176,57 +174,81 @@ class LoginRegisterScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildButtons(BuildContext context) {
+  Widget _buildAuthButtons(BuildContext context, {bool isWeb = false}) {
     final theme = Theme.of(context);
-
-    // DEĞİŞİKLİK: Modern ve yumuşak kenarlı buton stili burada tanımlanıyor.
     final buttonShape = MaterialStateProperty.all<OutlinedBorder>(
-      const StadiumBorder(), // Kenarları tam yuvarlak (hap şeklinde) yapar.
+      const StadiumBorder(),
     );
 
-    return Column(
-      children: [
-        // Login Butonu
-        OutlinedButton(
-          style: theme.outlinedButtonTheme.style?.copyWith(
-            shape: buttonShape, // Modern şekli uyguluyoruz.
-            side: MaterialStateProperty.all(
-              const BorderSide(
-                  color: Colors.white,
-                  width: 2), // Kenar çizgisi kalınlaştırıldı.
-            ),
-            foregroundColor: MaterialStateProperty.all(Colors.white),
-            padding: MaterialStateProperty.all(
-              const EdgeInsets.symmetric(
-                  vertical: 16), // Buton içi dikey boşluk artırıldı.
-            ),
+    // Web için butonlar
+    final webButtons = [
+      ElevatedButton(
+        style: theme.elevatedButtonTheme.style?.copyWith(
+          shape: buttonShape,
+          backgroundColor: MaterialStateProperty.all(theme.primaryColor),
+          foregroundColor: MaterialStateProperty.all(Colors.white),
+          padding: MaterialStateProperty.all(
+            const EdgeInsets.symmetric(vertical: 20, horizontal: 40),
           ),
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const LoginScreen()),
-            );
-          },
-          child: const Text('Login'),
         ),
-        const SizedBox(height: 16),
+        onPressed: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const LoginScreen())),
+        child: const Text('Giriş Yap'),
+      ),
+      const SizedBox(height: 16),
+      OutlinedButton(
+        style: theme.outlinedButtonTheme.style?.copyWith(
+          shape: buttonShape,
+          side: MaterialStateProperty.all(
+            BorderSide(color: theme.primaryColor, width: 1.5),
+          ),
+          foregroundColor: MaterialStateProperty.all(theme.primaryColor),
+          padding: MaterialStateProperty.all(
+            const EdgeInsets.symmetric(vertical: 20, horizontal: 40),
+          ),
+        ),
+        onPressed: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
+        child: const Text('Kayıt Ol'),
+      ),
+    ];
 
-        // Register Butonu
-        ElevatedButton(
-          style: theme.elevatedButtonTheme.style?.copyWith(
-            shape: buttonShape, // Modern şekli uyguluyoruz.
-            backgroundColor: MaterialStateProperty.all(Colors.white),
-            foregroundColor: MaterialStateProperty.all(theme.primaryColor),
-            padding: MaterialStateProperty.all(
-              const EdgeInsets.symmetric(vertical: 16),
-            ),
+    // Mobil için butonlar
+    final mobileButtons = [
+      OutlinedButton(
+        style: theme.outlinedButtonTheme.style?.copyWith(
+          shape: buttonShape,
+          side: MaterialStateProperty.all(
+            const BorderSide(color: Colors.white, width: 2),
           ),
-          onPressed: () {
-            Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RegisterScreen()));
-          },
-          child: const Text('Register'),
+          foregroundColor: MaterialStateProperty.all(Colors.white),
+          padding: MaterialStateProperty.all(
+            const EdgeInsets.symmetric(vertical: 16),
+          ),
         ),
-      ],
+        onPressed: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const LoginScreen())),
+        child: const Text('Giriş Yap'),
+      ),
+      const SizedBox(height: 16),
+      ElevatedButton(
+        style: theme.elevatedButtonTheme.style?.copyWith(
+          shape: buttonShape,
+          backgroundColor: MaterialStateProperty.all(Colors.white),
+          foregroundColor: MaterialStateProperty.all(theme.primaryColor),
+          padding: MaterialStateProperty.all(
+            const EdgeInsets.symmetric(vertical: 16),
+          ),
+        ),
+        onPressed: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
+        child: const Text('Kayıt Ol'),
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: isWeb ? webButtons : mobileButtons,
     );
   }
 }

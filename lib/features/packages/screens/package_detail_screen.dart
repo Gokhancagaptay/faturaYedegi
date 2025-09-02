@@ -158,12 +158,107 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? Center(
-              child: CircularProgressIndicator(color: colors['primaryBlue']))
-          : _error != null
-              ? _buildErrorState(colors)
-              : _buildContent(colors, isDarkMode),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (_isLoading) {
+            return Center(
+                child: CircularProgressIndicator(color: colors['primaryBlue']));
+          }
+          if (_error != null) {
+            return _buildErrorState(colors);
+          }
+
+          final isWeb = constraints.maxWidth > 800;
+
+          if (isWeb) {
+            return _buildWebLayout(colors, isDarkMode);
+          } else {
+            return _buildMobileLayout(colors, isDarkMode);
+          }
+        },
+      ),
+    );
+  }
+
+  // =============================================
+  // WEB LAYOUT WIDGETS
+  // =============================================
+
+  Widget _buildWebLayout(Map<String, dynamic> colors, bool isDarkMode) {
+    if (_packageData == null) return const SizedBox.shrink();
+
+    final invoices = _packageData!['invoices'] as List<dynamic>? ?? [];
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Sol Sütun: Özet
+        Expanded(
+          flex: 1,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: _buildSmartSummaryCardContent(colors, isDarkMode, invoices),
+          ),
+        ),
+        // Sağ Sütun: Faturalar
+        Expanded(
+          flex: 2,
+          child: Container(
+            color: colors['background'],
+            child: _buildWebInvoicesSection(colors, isDarkMode, invoices),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWebInvoicesSection(
+      Map<String, dynamic> colors, bool isDarkMode, List<dynamic> invoices) {
+    if (invoices.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.inbox,
+              size: _getResponsiveContainerSize(context, 48),
+              color: colors['textSecondary'],
+            ),
+            SizedBox(height: _getResponsiveSpacing(context)),
+            Text(
+              'Bu pakette henüz fatura yok',
+              style: TextStyle(
+                color: colors['textSecondary'],
+                fontSize: _getResponsiveFontSize(context, 16),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      itemCount: invoices.length,
+      itemBuilder: (context, index) {
+        final invoice = invoices[index];
+        // Mobil kart tasarımını web için yeniden kullanıyoruz
+        return _buildInvoiceCard(invoice, colors, isDarkMode);
+      },
+    );
+  }
+
+  // =============================================
+  // MOBILE LAYOUT WIDGETS
+  // =============================================
+
+  Widget _buildMobileLayout(Map<String, dynamic> colors, bool isDarkMode) {
+    return CustomScrollView(
+      slivers: [
+        _buildSmartSummaryCard(
+            colors, isDarkMode), // Özet kartı Sliver olarak kalıyor
+        _buildInvoicesSection(colors, isDarkMode),
+      ],
     );
   }
 
@@ -231,7 +326,6 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
   // Yeni Akıllı Özet Kartı
   Widget _buildSmartSummaryCard(Map<String, dynamic> colors, bool isDarkMode) {
     final invoices = _packageData!['invoices'] as List<dynamic>? ?? [];
-    final totalAmount = _calculateTotalAmount(invoices);
 
     return SliverToBoxAdapter(
       child: Container(
@@ -242,86 +336,94 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
           borderRadius: BorderRadius.circular(DashboardConstants.cardRadius),
           boxShadow: DashboardConstants.getCardShadow(isDarkMode),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: _buildSmartSummaryCardContent(colors, isDarkMode, invoices),
+      ),
+    );
+  }
+
+  // Özet kartının içeriği, hem web hem mobil için ortak kullanılacak
+  Widget _buildSmartSummaryCardContent(
+      Map<String, dynamic> colors, bool isDarkMode, List<dynamic> invoices) {
+    final totalAmount = _calculateTotalAmount(invoices);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: (colors['primaryBlue'] as Color)
-                        .withAlpha(25), // withOpacity yerine withAlpha
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.insights,
-                    color: colors['primaryBlue'],
-                    size: _getResponsiveContainerSize(context, 24),
-                  ),
-                ),
-                SizedBox(width: _getResponsiveSpacing(context)),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Akıllı Özet',
-                      style: TextStyle(
-                        color: colors['text'],
-                        fontSize: _getResponsiveFontSize(context, 18),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      'Paket detayları ve analiz sonuçları',
-                      style: TextStyle(
-                        color: colors['textSecondary'],
-                        fontSize: _getResponsiveFontSize(context, 14),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: (colors['primaryBlue'] as Color)
+                    .withAlpha(25), // withOpacity yerine withAlpha
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.insights,
+                color: colors['primaryBlue'],
+                size: _getResponsiveContainerSize(context, 24),
+              ),
             ),
-            SizedBox(height: _getResponsiveSpacing(context) * 1.5),
-            Row(
+            SizedBox(width: _getResponsiveSpacing(context)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _buildSummaryItem(
-                    'Toplam Tutar',
-                    '₺${totalAmount.toStringAsFixed(2)}',
-                    Icons.attach_money,
-                    colors,
+                Text(
+                  'Akıllı Özet',
+                  style: TextStyle(
+                    color: colors['text'],
+                    fontSize: _getResponsiveFontSize(context, 18),
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                SizedBox(width: _getResponsiveSpacing(context)),
-                Expanded(
-                  child: _buildSummaryItem(
-                    'Fatura Sayısı',
-                    invoices.length.toString(),
-                    Icons.receipt_long,
-                    colors,
+                Text(
+                  'Paket detayları ve analiz sonuçları',
+                  style: TextStyle(
+                    color: colors['textSecondary'],
+                    fontSize: _getResponsiveFontSize(context, 14),
                   ),
                 ),
               ],
             ),
-            SizedBox(height: _getResponsiveSpacing(context) * 1.5),
-            ElevatedButton.icon(
-              onPressed: _showExportOptions,
-              icon: const Icon(Icons.download, size: 18),
-              label: const Text('Raporu Dışa Aktar'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: colors['primaryBlue'],
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+          ],
+        ),
+        SizedBox(height: _getResponsiveSpacing(context) * 1.5),
+        Row(
+          children: [
+            Expanded(
+              child: _buildSummaryItem(
+                'Toplam Tutar',
+                '₺${totalAmount.toStringAsFixed(2)}',
+                Icons.attach_money,
+                colors,
+              ),
+            ),
+            SizedBox(width: _getResponsiveSpacing(context)),
+            Expanded(
+              child: _buildSummaryItem(
+                'Fatura Sayısı',
+                invoices.length.toString(),
+                Icons.receipt_long,
+                colors,
               ),
             ),
           ],
         ),
-      ),
+        SizedBox(height: _getResponsiveSpacing(context) * 1.5),
+        ElevatedButton.icon(
+          onPressed: _showExportOptions,
+          icon: const Icon(Icons.download, size: 18),
+          label: const Text('Raporu Dışa Aktar'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: colors['primaryBlue'],
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

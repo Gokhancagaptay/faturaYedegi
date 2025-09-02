@@ -421,6 +421,29 @@ const rejectInvoice = async (req, res) => {
     }
 };
 
+const updateStructuredData = async (req, res) => {
+    try {
+        const userId = req.user?.uid || req.user?.id;
+        const { packageId, invoiceId } = req.params;
+        const updatedData = req.body;
+
+        if (!updatedData || typeof updatedData !== 'object') {
+            return res.status(400).json({ message: 'Geçerli bir veri objesi gönderilmedi.' });
+        }
+
+        // DOĞRU KULLANIM: Fonksiyon (userId, packageId, invoiceId, data) bekliyor.
+        await packageRepo.updateInvoice(userId, packageId, invoiceId, {
+            structured: updatedData,
+            lastEditedAt: new Date() // Düzenleme zamanını kaydet
+        });
+
+        res.status(200).json({ success: true, message: 'Fatura verileri başarıyla güncellendi.' });
+    } catch (e) {
+        console.error('updateStructuredData error:', e);
+        res.status(500).json({ success: false, message: 'Fatura güncellenirken bir hata oluştu.', error: e.message });
+    }
+};
+
 module.exports = {
     createPackage,
     listPackages,
@@ -432,4 +455,5 @@ module.exports = {
     updateInvoiceData,
     approveInvoice,
     rejectInvoice,
+    updateStructuredData,
 };

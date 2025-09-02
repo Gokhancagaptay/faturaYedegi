@@ -503,6 +503,35 @@ class ApiService {
     }
   }
 
+  // YENİ: Faturanın yapılandırılmış verisini güncelle
+  Future<bool> updateInvoiceStructuredData({
+    required String token,
+    required String packageId,
+    required String invoiceId,
+    required Map<String, dynamic> updatedData,
+  }) async {
+    try {
+      final uri = Uri.parse(
+          "$_baseUrl/api/packages/$packageId/invoices/$invoiceId/structured");
+      final resp = await http
+          .put(
+            uri,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(updatedData),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      return resp.statusCode == 200;
+    } catch (e) {
+      // Hata durumunda false döndür ve hatayı logla (veya _humanizeError ile işle)
+      print('updateInvoiceStructuredData Error: ${e.toString()}');
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> updateInvoiceData(String token, String packageId,
       String invoiceId, Map<String, dynamic> data) async {
     try {

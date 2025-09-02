@@ -6,13 +6,13 @@ import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:fatura_yeni/features/dashboard/models/invoice_model.dart';
+import 'package:fatura_yeni/features/dashboard/providers/dashboard_provider.dart';
 import 'package:fatura_yeni/core/services/api_service.dart';
 import 'package:fatura_yeni/core/services/storage_service.dart';
 import 'package:fatura_yeni/features/scan/screens/scan_screen.dart';
 import 'package:fatura_yeni/features/invoices/screens/invoice_detail_screen.dart';
 import 'package:file_picker/file_picker.dart';
 
-import 'package:fatura_yeni/core/services/websocket_service.dart';
 import 'package:fatura_yeni/core/providers/theme_provider.dart';
 import 'package:fatura_yeni/core/constants/dashboard_constants.dart';
 
@@ -24,37 +24,14 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  late Future<List<Invoice>> _invoicesFuture;
-  Future<List<Invoice>> _allInvoicesFuture = Future.value(const []);
-  final ApiService _apiService = ApiService();
-  final StorageService _storageService = StorageService();
-  final WebSocketService _webSocketService = WebSocketService();
-  Future<List<Map<String, dynamic>>> _packagesFuture = Future.value(const []);
-  List<Map<String, dynamic>> _packages = const [];
+  // UI state for filters will remain in the widget
+  String? _statusFilter;
+  String? _packageFilter;
   String? _selectedPackageId;
 
-  // Filtre durumu
-  String?
-      _statusFilter; // 'approved', 'processed', 'pending', 'failed', null (tümü)
-  String? _packageFilter; // Paket ID'si veya null (tümü)
-
-  // Loading durumu
-  bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _packagesFuture = _loadPackages();
-    _invoicesFuture = _loadInvoices();
-    _allInvoicesFuture = _loadAllInvoices();
-    _initializeWebSocket();
-  }
-
-  @override
-  void dispose() {
-    _webSocketService.disconnect();
-    super.dispose();
-  }
+  // Services needed for actions
+  final ApiService _apiService = ApiService();
+  final StorageService _storageService = StorageService();
 
   // Tema renklerini al (dynamic theme)
   Color get _primaryBlue => context.watch<ThemeProvider>().isDarkMode
@@ -97,96 +74,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ? DashboardConstants.darkWhite
       : DashboardConstants.lightWhite;
 
-  // WebSocket bağlantısını başlat
-  Future<void> _initializeWebSocket() async {
-    try {
-      final token = await _storageService.getToken();
-      if (token == null) return;
-
-      // Backend'den kullanıcı ID'sini al
-      try {
-        final response = await _apiService.getUserProfile(token);
-        if (response['success'] == true) {
-          final user = response['user'];
-          final userId = user['uid'];
-
-          // WebSocket bağlantısını kur
-          await _webSocketService.connect(token, userId);
-
-          // WebSocket mesajlarını dinle - sadece bir kez
-          _webSocketService.messageStream.listen(
-            (message) {
-              if (mounted) {
-                _handleWebSocketMessage(message);
-              }
-            },
-            onError: (error) {
-              // WebSocket dinleme hatası
-            },
-          );
-
-          // Tüm faturaları dinle - sadece bir kez
-          _webSocketService.listenToAllInvoices();
-        }
-      } catch (profileError) {
-        // Kullanıcı profili alınamadı
-      }
-    } catch (e) {
-      // WebSocket başlatma hatası
-    }
-  }
-
-  // WebSocket mesajlarını işle
-  void _handleWebSocketMessage(Map<String, dynamic> message) {
-    if (!mounted) return; // Widget dispose edilmişse işleme
-
-    switch (message['type']) {
-      case 'invoice_status_update':
-        // Fatura durumu güncellendi, sadece bildirim göster
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Fatura durumu güncellendi'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-        break;
-      case 'package_status_update':
-        // Paket durumu güncellendi, sadece bildirim göster
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Paket durumu güncellendi'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-        break;
-      case 'processing_progress':
-        // İşlem ilerlemesi göster
-        _showProcessingProgress(message['progress'] as int);
-        break;
-    }
-  }
-
-  // İşlem ilerlemesi göster
-  void _showProcessingProgress(int progress) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const CircularProgressIndicator(strokeWidth: 2),
-              const SizedBox(width: 16),
-              Text('İşleniyor: %$progress'),
-            ],
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
+  // WebSocket bağlantısını başlatma ve veri yükleme işlemleri Provider'a taşındı.
+  // initState ve dispose içindeki eski kodlar kaldırıldı.
 
   String _decodeFileName(String? fileName) {
     if (fileName == null) return 'Fatura';
@@ -235,152 +124,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return 'Kullanıcı';
   }
 
-  // İşlenen fatura sayısını hesapla - API üzerinden
-  Future<int> _getProcessedInvoiceCount() async {
-    try {
-      final token = await _storageService.getToken();
-      if (token == null) {
-        return 0;
-      }
-
-      // API'den işlenen fatura sayısını al
-      final response = await _apiService.getInvoiceStats(token);
-
-      if (response['success'] == true) {
-        final stats = response['stats'] ?? {};
-        final processedCount = stats['processed'] ?? 0;
-        final approvedCount = stats['approved'] ?? 0;
-        final total = processedCount + approvedCount;
-        return total;
-      }
-    } catch (e) {
-      // İşlenen fatura sayısı alınamadı
-    }
-
-    // API hatası durumunda fallback olarak 0 döndür
-    return 0;
+  // İşlenen fatura sayısını hesapla - Artık Provider'dan gelen veri üzerinden
+  int _getProcessedInvoiceCount(List<Invoice> allInvoices) {
+    return allInvoices
+        .where((i) =>
+            i.status == 'processed' ||
+            (i.status == 'approved' && i.isApproved == true))
+        .length;
   }
 
-  // kaldırıldı: kullanılmayan export dialog metodu
-
-  Future<void> _refreshInvoices() async {
-    if (_isLoading) return; // Zaten yükleniyorsa bekle
-
-    setState(() {
-      _isLoading = true;
-    });
-
+  // Aylık fatura sayısını getir
+  int _getMonthlyInvoiceCount(List<Invoice> allInvoices) {
     try {
-      // Sadece gerekli verileri yenile
-      final newInvoices = await _loadInvoices();
-      final newAllInvoices = await _loadAllInvoices();
-
-      if (mounted) {
-        setState(() {
-          _invoicesFuture = Future.value(newInvoices);
-          _allInvoicesFuture = Future.value(newAllInvoices);
-          _isLoading = false;
-        });
-      }
+      final now = DateTime.now();
+      return allInvoices
+          .where((i) => i.date.year == now.year && i.date.month == now.month)
+          .length;
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-      // Fatura yenileme hatası
+      return 0;
     }
   }
 
-  Future<List<Invoice>> _loadInvoices() async {
-    try {
-      final token = await _storageService.getToken();
-      if (token == null) {
-        throw Exception('Authentication token not found.');
-      }
-
-      if (_selectedPackageId != null && _selectedPackageId!.isNotEmpty) {
-        // Seçili paket için faturaları çek
-        final response = await _apiService.getPackageInvoices(
-          token,
-          _selectedPackageId!,
-        );
-        final List<dynamic> data = response['invoices'] ?? [];
-        return data.map((json) => Invoice.fromJson(json)).toList();
-      } else {
-        // Seçili paket yoksa tüm paketlerdeki faturaları çek
-        return await _loadAllInvoices();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Faturalar yüklenemedi: $e')));
-      }
-      return [];
-    }
-  }
-
-  Future<List<Invoice>> _loadAllInvoices() async {
-    try {
-      final token = await _storageService.getToken();
-      if (token == null) {
-        throw Exception('Authentication token not found.');
-      }
-
-      // Önce tüm paketleri al
-      final packagesResponse = await _apiService.getPackages(token);
-      final List<dynamic> packagesList = packagesResponse['packages'] ?? [];
-
-      // Her paket için faturaları çek ve birleştir
-      List<Invoice> allInvoices = [];
-
-      for (final package in packagesList) {
-        try {
-          final packageId = package['id'].toString();
-          final packageInvoicesResponse = await _apiService.getPackageInvoices(
-            token,
-            packageId,
-          );
-          final List<dynamic> packageInvoices =
-              packageInvoicesResponse['invoices'] ?? [];
-
-          // Her faturaya packageId ekle
-          final packageInvoicesList = packageInvoices.map((json) {
-            final invoiceData = Map<String, dynamic>.from(json);
-            invoiceData['packageId'] = packageId; // Package ID'yi ekle
-            final invoice = Invoice.fromJson(invoiceData);
-            return invoice;
-          }).toList();
-
-          allInvoices.addAll(packageInvoicesList);
-        } catch (packageError) {
-          continue; // Bir paket hata verirse diğerlerine devam et
-        }
-      }
-
-      return allInvoices;
-    } catch (e) {
-      return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _loadPackages() async {
-    try {
-      final token = await _storageService.getToken();
-      if (token == null) throw Exception('Authentication token not found.');
-      final res = await _apiService.getPackages(token);
-      final List<dynamic> list = res['packages'] ?? [];
-      final items = list.cast<Map<String, dynamic>>();
-
-      // Varsayılan paket seçimi kaldırıldı - tüm paketlerdeki faturalar gösterilecek
-      _packages = items;
-      return items;
-    } catch (e) {
-      _packages = const [];
-      return [];
-    }
-  }
+  // _loadInvoices, _loadAllInvoices, _loadPackages Provider'a taşındı.
 
   void _showUploadOptions() {
     showModalBottomSheet(
@@ -441,12 +206,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   subtitle: 'Tek fotoğraf paket olur',
                   onTap: () async {
                     Navigator.of(context).pop();
-                    await Navigator.of(context).push(
+                    final result = await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => const ScanScreen(),
                       ),
                     );
-                    _refreshInvoices();
+                    // Veriyi yenilemek için provider'ı tetikle
+                    if (!mounted || result == null) return;
+                    await Provider.of<DashboardProvider>(context, listen: false)
+                        .loadData(silent: true);
                   },
                 ),
                 const SizedBox(height: 20),
@@ -469,6 +237,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       if (files != null && files.isNotEmpty) {
         // Yükleme işlemini başlat ve kullanıcıyı bilgilendir
+        if (!mounted) return;
         _showUploadSnackbar('Fatura paketi oluşturuluyor...', false);
 
         try {
@@ -486,7 +255,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _showUploadSnackbar(
                 'Paket başarıyla oluşturuldu ve işleniyor.', false,
                 isSuccess: true);
-            await _loadAllInvoices(); // Listeyi yenile
+            // Veriyi yenilemek için provider'ı tetikle
+            if (!mounted) return;
+            await Provider.of<DashboardProvider>(context, listen: false)
+                .loadData(silent: true);
           } else {
             final errorMessage =
                 response['message'] as String? ?? 'Bilinmeyen bir hata oluştu.';
@@ -532,7 +304,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: _primaryBlue.withOpacity(0.1),
+          color: _primaryBlue.withAlpha((255 * 0.1).round()),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, color: _primaryBlue),
@@ -557,30 +329,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: _backgroundColor,
       // AppBar ve üst bilgi barı kaldırıldı - maksimum ekran alanı
       body: SafeArea(
-        child: FutureBuilder<List<Map<String, dynamic>>>(
-          future: _packagesFuture,
-          builder: (context, pkgSnapshot) {
-            final packages = pkgSnapshot.data ?? _packages;
-            return FutureBuilder<List<Invoice>>(
-              future: _invoicesFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting &&
-                    pkgSnapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+        child: Consumer<DashboardProvider>(
+          builder: (context, provider, child) {
+            // Veri durumuna göre UI'ı oluştur
+            switch (provider.status) {
+              case DashboardStatus.loading:
+                return const Center(child: CircularProgressIndicator());
+              case DashboardStatus.error:
+                return _buildErrorState(provider.errorMessage);
+              case DashboardStatus.loaded:
+              case DashboardStatus.initial: // Also handles initial loaded state
+                final invoices = provider.invoices;
+                final packages = provider.packages;
 
-                if (snapshot.hasError) {
-                  return _buildErrorState();
-                }
-
-                final invoices = snapshot.data ?? [];
-
-                // Eğer faturalar henüz yüklenmemişse loading göster
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                // Eğer hiç fatura yoksa boş durum göster
                 if (invoices.isEmpty) {
                   return _buildEmptyState();
                 }
@@ -594,36 +355,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           (i.status == 'approved' ||
                               (i.status == 'processed' &&
                                   i.isApproved == true)),
-                    ) // Sadece onaylanmış faturalar
+                    )
                     .fold<double>(0.0, (sum, item) => sum + item.totalAmount);
 
-                return FutureBuilder<List<Invoice>>(
-                  future: _allInvoicesFuture,
-                  builder: (context, allSnap) {
-                    final allInvoices = allSnap.data ?? invoices;
+                final allInvoices = provider.invoices;
 
-                    // Web için farklı layout
-                    if (isWeb && (isDesktop || isTablet)) {
-                      return _buildWebDashboardContent(
-                        context,
-                        monthlyTotal,
-                        invoices,
-                        packages: packages,
-                        allInvoices: allInvoices,
-                      );
-                    }
+                // Web için farklı layout
+                if (isWeb && (isDesktop || isTablet)) {
+                  return _buildWebDashboardContent(
+                    context,
+                    monthlyTotal,
+                    invoices,
+                    packages: packages,
+                    allInvoices: allInvoices,
+                  );
+                }
 
-                    return _buildDashboardContent(
-                      context,
-                      monthlyTotal,
-                      invoices,
-                      packages: packages,
-                      allInvoices: allInvoices,
-                    );
-                  },
+                return _buildDashboardContent(
+                  context,
+                  monthlyTotal,
+                  invoices,
+                  packages: packages,
+                  allInvoices: allInvoices,
                 );
-              },
-            );
+            }
           },
         ),
       ),
@@ -637,7 +392,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildErrorState() {
+  Widget _buildErrorState([String? message]) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -648,9 +403,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'Faturalar yüklenirken hata oluştu',
             style: TextStyle(color: Colors.grey[600], fontSize: 16),
           ),
+          if (message != null) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+              child: Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[500], fontSize: 12),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: _refreshInvoices,
+            onPressed: () =>
+                Provider.of<DashboardProvider>(context, listen: false)
+                    .loadData(),
             child: const Text('Tekrar Dene'),
           ),
         ],
@@ -678,13 +446,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     120,
                   ),
                   decoration: BoxDecoration(
-                    color: _primaryBlue.withOpacity(0.1),
+                    color: _primaryBlue.withAlpha((255 * 0.1).round()),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.receipt_long,
                     size: 60,
-                    color: _primaryBlue.withOpacity(0.6),
+                    color: _primaryBlue.withAlpha((255 * 0.6).round()),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -713,7 +481,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           builder: (context) => const ScanScreen(),
                         ),
                       );
-                      _refreshInvoices();
+                      // Veriyi yenilemek için provider'ı tetikle
+                      if (!mounted) return;
+                      await Provider.of<DashboardProvider>(context,
+                              listen: false)
+                          .loadData(silent: true);
                     },
                     icon: const Icon(Icons.camera_alt),
                     label: const Text(
@@ -967,13 +739,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
               end: Alignment.bottomRight,
               colors: [
                 _primaryBlue,
-                _primaryBlue.withOpacity(0.8),
+                _primaryBlue.withAlpha((255 * 0.8).round()),
               ],
             ),
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: _primaryBlue.withOpacity(0.3),
+                color: _primaryBlue.withAlpha((255 * 0.3).round()),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -995,7 +767,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             return Text(
                               'Hoş geldiniz, $userName!',
                               style: TextStyle(
-                                color: _white.withOpacity(0.9),
+                                color: _white.withAlpha((255 * 0.9).round()),
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -1005,7 +777,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Text(
                           'Bu ayki harcamalarınızı takip edin',
                           style: TextStyle(
-                            color: _white.withOpacity(0.7),
+                            color: _white.withAlpha((255 * 0.7).round()),
                             fontSize: 14,
                           ),
                         ),
@@ -1016,50 +788,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 24),
               Text(
-                'Bu Ayki Toplam İşlenen Faturanız',
+                'Bu Ayki Toplam Fatura',
                 style: TextStyle(
-                  color: _white.withOpacity(0.8),
+                  color: _white.withAlpha((255 * 0.8).round()),
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 8),
-              FutureBuilder<int>(
-                future: _getMonthlyInvoiceCount(),
-                builder: (context, snapshot) {
-                  final count = snapshot.data ?? 0;
-                  return Row(
-                    children: [
-                      Text(
-                        '₺${monthlyTotal.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          color: _white,
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '$count Fatura',
-                          style: TextStyle(
-                            color: _white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
+              Text(
+                '₺${monthlyTotal.toStringAsFixed(2)}',
+                style: TextStyle(
+                  color: _white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${_getMonthlyInvoiceCount(invoices)} Fatura',
+                style: TextStyle(
+                  color: _white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
@@ -1135,17 +887,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   colors: [
                     _primaryBlue,
                     context.watch<ThemeProvider>().isDarkMode
-                        ? _primaryBlue.withOpacity(
-                            0.6,
-                          ) // Dark mode'da daha koyu
-                        : _primaryBlue.withOpacity(0.8), // Light mode'da normal
+                        ? _primaryBlue.withAlpha(
+                            (255 * 0.6).round()) // Dark mode'da daha koyu
+                        : _primaryBlue.withAlpha(
+                            (255 * 0.8).round()), // Light mode'da normal
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: _primaryBlue.withOpacity(0.3),
+                    color: _primaryBlue.withAlpha((255 * 0.3).round()),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -1160,7 +912,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: _white.withOpacity(0.2),
+                          color: _white.withAlpha((255 * 0.2).round()),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
@@ -1181,7 +933,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 return Text(
                                   'Hoş geldiniz, $userName!',
                                   style: TextStyle(
-                                    color: _white.withOpacity(0.9),
+                                    color:
+                                        _white.withAlpha((255 * 0.9).round()),
                                     fontSize: 18,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -1191,7 +944,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             Text(
                               'Bu ayki harcamalarınızı takip edin',
                               style: TextStyle(
-                                color: _white.withOpacity(0.7),
+                                color: _white.withAlpha((255 * 0.7).round()),
                                 fontSize: 14,
                               ),
                             ),
@@ -1204,36 +957,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Text(
                     'Bu Ayki Toplam İşlenen Faturanız',
                     style: TextStyle(
-                      color: _white.withOpacity(0.8),
+                      color: _white.withAlpha((255 * 0.8).round()),
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                   const SizedBox(height: 8),
-                  FutureBuilder<int>(
-                    future: _getProcessedInvoiceCount(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return Text(
-                          '...',
-                          style: TextStyle(
-                            color: _white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -0.5,
-                          ),
-                        );
-                      }
-                      return Text(
-                        '${snapshot.data ?? 0} Fatura',
-                        style: TextStyle(
-                          color: _white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.5,
-                        ),
-                      );
-                    },
+                  Text(
+                    '${_getProcessedInvoiceCount(invoices)} Fatura',
+                    style: TextStyle(
+                      color: _white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.5,
+                    ),
                   ),
                 ],
               ),
@@ -1314,7 +1051,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: _surfaceColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withAlpha((255 * 0.2).round()),
         ),
       ),
       child: Column(
@@ -1356,7 +1093,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: _surfaceColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withAlpha((255 * 0.2).round()),
         ),
       ),
       child: Column(
@@ -1469,10 +1206,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withAlpha((255 * 0.1).round()),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: color.withOpacity(0.3),
+            color: color.withAlpha((255 * 0.3).round()),
             width: 1,
           ),
         ),
@@ -1492,7 +1229,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               title,
               style: TextStyle(
                 fontSize: 12,
-                color: color.withOpacity(0.8),
+                color: color.withAlpha((255 * 0.8).round()),
                 fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
@@ -1559,11 +1296,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: _cardBackground,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withAlpha((255 * 0.2).round()),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha((255 * 0.05).round()),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -1572,18 +1309,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Row(
         children: [
           // Fatura ikonu
-          Container(
+          SizedBox(
             width: 48,
             height: 48,
-            decoration: BoxDecoration(
-              color: _getStatusColor(invoice.status ?? '').withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              _getStatusIcon(invoice.status ?? ''),
-              color: _getStatusColor(invoice.status ?? ''),
-              size: 24,
-            ),
+            child: invoice.thumbnailUrl != null &&
+                    invoice.thumbnailUrl!.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      invoice.thumbnailUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: _cardBackground,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: _buildFileTypeIcon(invoice.fileName),
+                        );
+                      },
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: _cardBackground,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                              strokeWidth: 2,
+                              color: _primaryBlue,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  )
+                : Container(
+                    decoration: BoxDecoration(
+                      color: _cardBackground,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: _buildFileTypeIcon(invoice.fileName),
+                  ),
           ),
           const SizedBox(width: 16),
           // Fatura bilgileri
@@ -1634,7 +1406,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: _getStatusColor(invoice.status ?? '')
-                            .withOpacity(0.1),
+                            .withAlpha((255 * 0.1).round()),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1656,7 +1428,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               IconButton(
                 onPressed: () {
-                  // TODO: Fatura detayına git
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => InvoiceDetailScreen(
+                        invoiceId: invoice.id,
+                        packageId: invoice.packageId ?? _selectedPackageId,
+                      ),
+                    ),
+                  );
                 },
                 icon: Icon(
                   Icons.visibility,
@@ -1686,23 +1465,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
     );
-  }
-
-  // Aylık fatura sayısını getir
-  Future<int> _getMonthlyInvoiceCount() async {
-    try {
-      final allInvoices = await _allInvoicesFuture;
-      final now = DateTime.now();
-      return allInvoices
-          .where((i) =>
-              i.date.year == now.year &&
-              i.date.month == now.month &&
-              (i.status == 'approved' ||
-                  (i.status == 'processed' && i.isApproved == true)))
-          .length;
-    } catch (e) {
-      return 0;
-    }
   }
 
   Widget _buildPackagesSwitcher(List<Map<String, dynamic>> packages) {
@@ -1852,7 +1614,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withAlpha((255 * 0.05).round()),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -2034,22 +1796,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // Durum ikonunu getir
-  IconData _getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'approved':
-        return Icons.check_circle;
-      case 'processed':
-        return Icons.pending;
-      case 'pending':
-        return Icons.schedule;
-      case 'failed':
-        return Icons.error;
-      default:
-        return Icons.receipt;
-    }
-  }
-
   // Durum metnini getir
   String _getStatusText(String status) {
     switch (status.toLowerCase()) {
@@ -2068,7 +1814,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Yeni: Filtrelenmiş faturaları döndür
   List<Invoice> _getFilteredInvoices(List<Invoice> allInvoices) {
-    List<Invoice> filteredInvoices = allInvoices;
+    List<Invoice> filteredInvoices = List.from(allInvoices);
 
     // 1. Durum filtresi uygula
     if (_statusFilter != null) {
@@ -2159,10 +1905,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     // Paket filtresi varsa ekle
     if (_packageFilter != null) {
-      final package = _packages.firstWhere(
-        (p) => p['id'].toString() == _packageFilter,
-        orElse: () => {'name': 'Bilinmeyen Paket'},
-      );
+      final package = Provider.of<DashboardProvider>(context, listen: false)
+          .packages
+          .firstWhere(
+            (p) => p['id'].toString() == _packageFilter,
+            orElse: () => {'name': 'Bilinmeyen Paket'},
+          );
       final fullName = package['name'] ?? 'Paket';
       final shortName = _getSmartPackageName(fullName.toString());
       activeFilters.add(shortName);
@@ -2179,9 +1927,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: filterColor.withOpacity(0.1),
+        color: filterColor.withAlpha((255 * 0.1).round()),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: filterColor.withOpacity(0.3)),
+        border: Border.all(color: filterColor.withAlpha((255 * 0.3).round())),
       ),
       child: Row(
         children: [
@@ -2274,13 +2022,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isSelected ? _primaryBlue.withOpacity(0.1) : _cardBackground,
+            color: isSelected
+                ? _primaryBlue.withAlpha((255 * 0.1).round())
+                : _cardBackground,
             borderRadius: BorderRadius.circular(12),
             border:
                 isSelected ? Border.all(color: _primaryBlue, width: 2) : null,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withAlpha((255 * 0.05).round()),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),

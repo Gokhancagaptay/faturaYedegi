@@ -19,5 +19,8 @@ router.put('/:packageId/invoices/:invoiceId', protect, controller.updateInvoiceD
 router.post('/:packageId/invoices/:invoiceId/approve', protect, controller.approveInvoice);
 router.post('/:packageId/invoices/:invoiceId/reject', protect, controller.rejectInvoice);
 
+// Sadece yapılandırılmış veriyi güncellemek için yeni endpoint
+router.put('/:packageId/invoices/:invoiceId/structured', protect, controller.updateStructuredData);
+
 
 module.exports = router;

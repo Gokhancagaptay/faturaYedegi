@@ -10,6 +10,7 @@ import 'package:fatura_yeni/core/providers/theme_provider.dart';
 import 'package:fatura_yeni/features/auth/screens/login_register_screen.dart';
 import 'package:fatura_yeni/l10n/app_localizations.dart';
 import 'package:fatura_yeni/firebase_options.dart';
+import 'package:fatura_yeni/features/dashboard/providers/dashboard_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +51,7 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => DashboardProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
