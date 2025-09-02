@@ -287,22 +287,31 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       final token = await _storage.getToken();
       if (token == null) throw Exception('Yetkilendirme token\'ı bulunamadı.');
 
-      await _api.approveInvoice(token, widget.packageId!, widget.invoiceId);
+      final response =
+          await _api.approveInvoice(token, widget.packageId!, widget.invoiceId);
 
       if (!mounted) return; // Async sonrası mounted kontrolü
       Navigator.of(context).pop(); // "Onaylanıyor" dialog'unu kapat
 
-      setState(() {
-        _originalInvoice?.structured.isApproved = true;
-        _originalInvoice?.structured.status = 'approved';
-      });
+      // Backend'den dönen yanıtı kontrol et
+      if (response['success'] == true) {
+        setState(() {
+          _originalInvoice?.structured.isApproved = true;
+          _originalInvoice?.structured.status = 'approved';
+        });
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("Fatura başarıyla onaylandı."),
-            backgroundColor: Colors.green),
-      );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Fatura başarıyla onaylandı."),
+              backgroundColor: Colors.green),
+        );
+
+        // Ana ekrana dön ve dashboard'ı yenile
+        Navigator.of(context).pop(true);
+      } else {
+        throw Exception(response['message'] ?? 'Fatura onaylanamadı.');
+      }
     } catch (e) {
       if (!mounted) return; // Async sonrası mounted kontrolü
       Navigator.of(context).pop(); // "Onaylanıyor" dialog'unu kapat

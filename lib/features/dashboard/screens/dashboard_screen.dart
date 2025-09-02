@@ -1450,8 +1450,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Column(
             children: [
               IconButton(
-                onPressed: () {
-                  Navigator.of(context).push(
+                onPressed: () async {
+                  final result = await Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => InvoiceDetailScreen(
                         invoiceId: invoice.id,
@@ -1459,6 +1459,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   );
+                  // Eğer onaylama işlemi yapıldıysa (pop(true)), listeyi yenile
+                  if (result == true) {
+                    Provider.of<DashboardProvider>(context, listen: false)
+                        .loadData();
+                  }
                 },
                 icon: Icon(
                   Icons.visibility,
@@ -1618,9 +1623,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     return InkWell(
-      onTap: () {
+      onTap: () async {
         // Fatura detayına yönlendir - packageId ile birlikte
-        Navigator.of(context).push(
+        final result = await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => InvoiceDetailScreen(
               invoiceId: invoice.id,
@@ -1629,6 +1634,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         );
+        // Eğer onaylama işlemi yapıldıysa (pop(true)), listeyi yenile
+        if (result == true) {
+          Provider.of<DashboardProvider>(context, listen: false).loadData();
+        }
       },
       child: Container(
         padding: const EdgeInsets.all(16),

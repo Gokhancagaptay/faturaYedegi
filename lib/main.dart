@@ -6,25 +6,42 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart'
     as provider; // provider paketine ön ek ver
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/date_symbol_data_local.dart'; // Locale data için
 import 'package:fatura_yeni/core/theme/app_theme.dart';
 import 'package:fatura_yeni/core/providers/theme_provider.dart';
 
 import 'package:fatura_yeni/features/auth/screens/login_register_screen.dart'; // Doğru başlangıç ekranı
 import 'package:fatura_yeni/features/dashboard/providers/dashboard_provider.dart';
+import 'package:fatura_yeni/firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
 
+  // Firebase'i güvenli şekilde başlat
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    // Firebase başlatma hatası durumunda uygulamanın çökmesini önle
+    print('Firebase başlatma hatası: $e');
+  }
+
+  // Türkçe locale verilerini başlat
+  await initializeDateFormatting('tr_TR', null);
+
+  // Firebase App Check'i güvenli şekilde başlat
   try {
     await FirebaseAppCheck.instance.activate(
       webProvider: ReCaptchaV3Provider('recaptcha-v3-site-key'),
       androidProvider: AndroidProvider.debug,
       appleProvider: AppleProvider.appAttest,
     );
-    // Başarılı aktivasyon logu (isteğe bağlı)
   } catch (e) {
-    // Hata logu (isteğe bağlı)
+    // App Check hatası durumunda uygulamanın çökmesini önle
+    print('Firebase App Check hatası: $e');
   }
 
   runApp(
