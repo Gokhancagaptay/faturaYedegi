@@ -2,26 +2,20 @@
 
 import 'dart:async';
 import 'package:fatura_yeni/core/services/api_service.dart';
-import 'package:fatura_yeni/core/services/firebase_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fatura_yeni/core/services/storage_service.dart';
 import 'package:flutter/material.dart';
 import 'package:pinput/pinput.dart';
 import 'package:fatura_yeni/features/main/main_screen.dart';
 
 class OtpScreen extends StatefulWidget {
+  final String phoneNumber;
   final String verificationId;
-  final String name;
-  final String email;
-  final String password;
-  final String fullPhoneNumber;
 
   const OtpScreen({
     super.key,
+    required this.phoneNumber,
     required this.verificationId,
-    required this.name,
-    required this.email,
-    required this.password,
-    required this.fullPhoneNumber,
   });
 
   @override
@@ -30,7 +24,6 @@ class OtpScreen extends StatefulWidget {
 
 class _OtpScreenState extends State<OtpScreen> {
   final TextEditingController _pinController = TextEditingController();
-  final FirebaseService _firebaseService = FirebaseService();
   final ApiService _apiService = ApiService();
   final StorageService _storageService = StorageService();
   bool _isLoading = false;
@@ -65,10 +58,10 @@ class _OtpScreenState extends State<OtpScreen> {
     super.dispose();
   }
 
-  Future<void> _verifyAndRegister() async {
+  Future<void> _verifyOtp() async {
     if (_pinController.text.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lütfen 6 haneli kodu girin.')),
+        const SnackBar(content: Text('Lütfen 6 haneli OTP kodunu girin.')),
       );
       return;
     }
@@ -78,35 +71,40 @@ class _OtpScreenState extends State<OtpScreen> {
     });
 
     try {
-      final firebaseIdToken =
-          await _firebaseService.getFirebaseIdTokenWithSmsCode(
-        widget.verificationId,
-        _pinController.text,
+      // 1) Firebase'de giriş yap ve ID token al
+      final idToken = await FirebaseAuth.instance
+          .signInWithCredential(
+            PhoneAuthProvider.credential(
+              verificationId: widget.verificationId,
+              smsCode: _pinController.text,
+            ),
+          )
+          .then((_) => FirebaseAuth.instance.currentUser?.getIdToken(true));
+
+      if (idToken == null) throw Exception('Firebase ID token alınamadı');
+
+      // 2) Backend'e ID token'ı gönder, uygulama JWT'si al
+      final response = await _apiService.loginWithFirebaseToken(
+        firebaseIdToken: idToken,
+        phoneNumber: widget.phoneNumber,
       );
 
-      if (firebaseIdToken == null) {
-        throw Exception("Firebase ID token alınamadı.");
-      }
-
-      final response = await _apiService.register(
-        email: widget.email,
-        password: widget.password,
-        phone: widget.fullPhoneNumber, // 'name' yerine 'phone' gönder
-        firebaseIdToken: firebaseIdToken,
-      );
-
-      await _storageService.saveToken(response['token']);
-
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const MainScreen()),
-          (Route<dynamic> route) => false,
-        );
+      final token = response['token'];
+      if (token != null) {
+        await _storageService.saveToken(token);
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const MainScreen()),
+            (Route<dynamic> route) => false,
+          );
+        }
+      } else {
+        throw Exception('Token alınamadı');
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kayıt başarısız: ${e.toString()}')),
+          SnackBar(content: Text('OTP doğrulama hatası: ${e.toString()}')),
         );
       }
     } finally {
@@ -155,10 +153,10 @@ class _OtpScreenState extends State<OtpScreen> {
               _buildResendCode(context),
               const Spacer(flex: 2),
               ElevatedButton(
-                onPressed: _isLoading ? null : _verifyAndRegister,
+                onPressed: _isLoading ? null : _verifyOtp,
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Verify and Create Account'),
+                    : const Text('OTP Doğrula'),
               ),
               const Spacer(flex: 1),
             ],
@@ -182,7 +180,7 @@ class _OtpScreenState extends State<OtpScreen> {
           text: TextSpan(
             style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey[600]),
             children: [
-              TextSpan(text: "Code was sent to ${widget.fullPhoneNumber}\n"),
+              TextSpan(text: "Code was sent to ${widget.phoneNumber}\n"),
               const TextSpan(text: "This code will expire in "),
               TextSpan(
                 text: timerString,
@@ -207,7 +205,7 @@ class _OtpScreenState extends State<OtpScreen> {
     );
 
     return Pinput(
-      length: 6, // Firebase 6 haneli kod gönderir
+      length: 6, // Backend 6 haneli OTP gönderir
       controller: _pinController,
       defaultPinTheme: defaultPinTheme,
       focusedPinTheme: defaultPinTheme.copyWith(
@@ -216,7 +214,7 @@ class _OtpScreenState extends State<OtpScreen> {
         ),
       ),
       onCompleted: (pin) {
-        _verifyAndRegister();
+        _verifyOtp();
       },
     );
   }
@@ -234,11 +232,20 @@ class _OtpScreenState extends State<OtpScreen> {
           onPressed: _start == 0
               ? () async {
                   // Resend OTP logic
-                  await _firebaseService.resendOtp(widget.fullPhoneNumber);
-                  setState(() {
-                    _start = 120;
-                  });
-                  startTimer();
+                  try {
+                    await _apiService.registerWithOtp(
+                      phoneNumber: widget.phoneNumber,
+                    );
+                    setState(() {
+                      _start = 120;
+                    });
+                    startTimer();
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content: Text('OTP yeniden gönderme hatası: $e')),
+                    );
+                  }
                 }
               : null, // Disable button if timer is running
           child: Text(

@@ -1,0 +1,10 @@
+Flask
+opencv-python
+pytesseract
+PyMuPDF
+numpy
+scipy
+python-dotenv
+gunicorn
+pandas
+pdfplumber

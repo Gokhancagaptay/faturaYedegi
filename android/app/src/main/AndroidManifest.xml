@@ -1,5 +1,14 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.fatura_yeni">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Depolama izinleri - Android 12 ve altı -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    
+    <!-- Android 13+ için READ_MEDIA_* izinleri -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    
     <application
         android:label="fatura_yeni"
         android:name="${applicationName}"
