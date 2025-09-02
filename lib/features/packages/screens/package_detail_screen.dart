@@ -197,7 +197,7 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
           flex: 1,
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
-            child: _buildSmartSummaryCardContent(colors, isDarkMode, invoices),
+            child: _buildWebSummaryCardContent(colors, isDarkMode, invoices),
           ),
         ),
         // Sağ Sütun: Faturalar
@@ -312,17 +312,6 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
     );
   }
 
-  Widget _buildContent(Map<String, dynamic> colors, bool isDarkMode) {
-    if (_packageData == null) return const SizedBox();
-
-    return CustomScrollView(
-      slivers: [
-        _buildSmartSummaryCard(colors, isDarkMode), // Yeni Akıllı Özet Kartı
-        _buildInvoicesSection(colors, isDarkMode),
-      ],
-    );
-  }
-
   // Yeni Akıllı Özet Kartı
   Widget _buildSmartSummaryCard(Map<String, dynamic> colors, bool isDarkMode) {
     final invoices = _packageData!['invoices'] as List<dynamic>? ?? [];
@@ -410,6 +399,159 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
           ],
         ),
         SizedBox(height: _getResponsiveSpacing(context) * 1.5),
+        ElevatedButton.icon(
+          onPressed: _showExportOptions,
+          icon: const Icon(Icons.download, size: 18),
+          label: const Text('Raporu Dışa Aktar'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: colors['primaryBlue'],
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Web'e özel, zenginleştirilmiş özet kartı içeriği
+  Widget _buildWebSummaryCardContent(
+      Map<String, dynamic> colors, bool isDarkMode, List<dynamic> invoices) {
+    final totalAmount = _calculateTotalAmount(invoices);
+    final totalItems = _calculateTotalItems(invoices);
+    final totalVat = _calculateTotalVat(invoices);
+
+    // Fatura durum dökümü
+    final statusCounts = <String, int>{};
+    for (var invoice in invoices) {
+      final status = invoice['status'] as String? ?? 'unknown';
+      statusCounts[status] = (statusCounts[status] ?? 0) + 1;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: (colors['primaryBlue'] as Color)
+                    .withAlpha(25), // withOpacity yerine withAlpha
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.insights,
+                color: colors['primaryBlue'],
+                size: _getResponsiveContainerSize(context, 24),
+              ),
+            ),
+            SizedBox(width: _getResponsiveSpacing(context)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Akıllı Özet',
+                  style: TextStyle(
+                    color: colors['text'],
+                    fontSize: _getResponsiveFontSize(context, 18),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'Paket detayları ve analiz sonuçları',
+                  style: TextStyle(
+                    color: colors['textSecondary'],
+                    fontSize: _getResponsiveFontSize(context, 14),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        SizedBox(height: _getResponsiveSpacing(context) * 1.5),
+        Row(
+          children: [
+            Expanded(
+              child: _buildSummaryItem(
+                'Toplam Tutar',
+                '₺${totalAmount.toStringAsFixed(2)}',
+                Icons.attach_money,
+                colors,
+              ),
+            ),
+            SizedBox(width: _getResponsiveSpacing(context)),
+            Expanded(
+              child: _buildSummaryItem(
+                'Fatura Sayısı',
+                invoices.length.toString(),
+                Icons.receipt_long,
+                colors,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: _getResponsiveSpacing(context)),
+        Row(
+          children: [
+            Expanded(
+              child: _buildSummaryItem(
+                'Toplam Ürün Kalemi',
+                totalItems.toString(),
+                Icons.list_alt,
+                colors,
+              ),
+            ),
+            SizedBox(width: _getResponsiveSpacing(context)),
+            Expanded(
+              child: _buildSummaryItem(
+                'Toplam KDV',
+                '₺${totalVat.toStringAsFixed(2)}',
+                Icons.request_quote_outlined,
+                colors,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: _getResponsiveSpacing(context) * 1.5),
+
+        // Fatura Durum Dağılımı
+        if (statusCounts.isNotEmpty) ...[
+          const Divider(),
+          SizedBox(height: _getResponsiveSpacing(context) * 1.5),
+          Text(
+            "Fatura Durum Dağılımı",
+            style: TextStyle(
+              fontSize: _getResponsiveFontSize(context, 16),
+              fontWeight: FontWeight.w600,
+              color: colors['text'],
+            ),
+          ),
+          SizedBox(height: _getResponsiveSpacing(context)),
+          ...statusCounts.entries.map((entry) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _humanizeStatus(entry.key),
+                    style: TextStyle(color: colors['textSecondary']),
+                  ),
+                  Text(
+                    entry.value.toString(),
+                    style: TextStyle(
+                        color: colors['text'], fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            );
+          }),
+          SizedBox(height: _getResponsiveSpacing(context) * 1.5),
+        ],
+
         ElevatedButton.icon(
           onPressed: _showExportOptions,
           icon: const Icon(Icons.download, size: 18),
@@ -787,6 +929,38 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
         return sum;
       }
     });
+  }
+
+  int _calculateTotalItems(List<dynamic> invoices) {
+    int totalItems = 0;
+    for (var invoiceData in invoices) {
+      try {
+        final structured = invoiceData['structured'];
+        if (structured != null && structured['urun_kalemleri'] is List) {
+          totalItems += (structured['urun_kalemleri'] as List).length;
+        }
+      } catch (e) {
+        // Ignore if parsing fails for one invoice
+      }
+    }
+    return totalItems;
+  }
+
+  double _calculateTotalVat(List<dynamic> invoices) {
+    double totalVat = 0.0;
+    for (var invoiceData in invoices) {
+      try {
+        final structured = invoiceData['structured'];
+        if (structured != null && structured['kdv_tutari'] != null) {
+          final vatValue =
+              structured['kdv_tutari'].toString().replaceAll(',', '.');
+          totalVat += double.tryParse(vatValue) ?? 0.0;
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+    return totalVat;
   }
 
   void _showExportOptions() {
@@ -1327,6 +1501,21 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
       return DateTime.fromMillisecondsSinceEpoch(dateValue['_seconds'] * 1000);
     }
     throw const FormatException('Unsupported date format');
+  }
+
+  String _humanizeStatus(String status) {
+    switch (status) {
+      case 'processed':
+        return 'İşlendi';
+      case 'approved':
+        return 'Onaylandı';
+      case 'failed':
+        return 'Hatalı';
+      case 'pending':
+        return 'Beklemede';
+      default:
+        return 'Diğer';
+    }
   }
 
   // Responsive helper methods

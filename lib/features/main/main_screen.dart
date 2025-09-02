@@ -2,11 +2,11 @@
 
 import 'package:fatura_yeni/features/dashboard/screens/dashboard_screen.dart';
 import 'package:fatura_yeni/features/scanner/screens/scanner_screen.dart';
+import 'package:fatura_yeni/features/upload/screens/upload_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:fatura_yeni/features/account/screens/account_screen.dart';
 import 'package:fatura_yeni/features/packages/screens/packages_screen.dart';
-import 'package:fatura_yeni/core/constants/dashboard_constants.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -21,14 +21,17 @@ class _MainScreenState extends State<MainScreen> {
   // Bottom Navigasyon'da gösterilecek ekranlar
   static final List<Widget> _widgetOptions = <Widget>[
     const DashboardScreen(),
-    const ScannerScreen(),
-    const PackagesScreen(), // Paketler ekranı
-    const AccountScreen(), // TODO: Hesap ekranı buraya gelecek
+    kIsWeb
+        ? const UploadScreen()
+        : const ScannerScreen(), // Web'de Upload, mobilde Scan
+    const PackagesScreen(),
+    const AccountScreen(),
   ];
 
   void _onItemTapped(int index) {
-    // Kamera sekmesine basıldığında doğrudan ScannerScreen'e yönlendir
-    if (index == 1) {
+    // Web'de Tarama/Yükle sekmesi (index 1) doğrudan state'i günceller.
+    // Mobil'de ise Tarama sekmesi (index 1) yeni bir sayfa açar.
+    if (index == 1 && !kIsWeb) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const ScannerScreen()),
       );
@@ -64,7 +67,7 @@ class _MainScreenState extends State<MainScreen> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withAlpha((255 * 0.1).round()),
                     blurRadius: 8,
                     offset: const Offset(2, 0),
                   ),
@@ -115,16 +118,16 @@ class _MainScreenState extends State<MainScreen> {
                           ? NavigationRailLabelType.all
                           : NavigationRailLabelType.selected,
                       minWidth: isDesktop ? 280 : 240,
-                      destinations: [
+                      destinations: const [
                         NavigationRailDestination(
                           icon: Icon(Icons.home_outlined),
                           selectedIcon: Icon(Icons.home),
                           label: Text('Anasayfa'),
                         ),
                         NavigationRailDestination(
-                          icon: Icon(Icons.camera_alt_outlined),
-                          selectedIcon: Icon(Icons.camera_alt),
-                          label: Text('Tarama'),
+                          icon: Icon(Icons.upload_file_outlined),
+                          selectedIcon: Icon(Icons.upload_file),
+                          label: Text('Yükle'),
                         ),
                         NavigationRailDestination(
                           icon: Icon(Icons.folder_outlined),
@@ -150,7 +153,7 @@ class _MainScreenState extends State<MainScreen> {
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.6),
+                              .withAlpha((255 * 0.6).round()),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -161,7 +164,7 @@ class _MainScreenState extends State<MainScreen> {
                               color: Theme.of(context)
                                   .colorScheme
                                   .onSurface
-                                  .withOpacity(0.6),
+                                  .withAlpha((255 * 0.6).round()),
                             ),
                           ),
                         ),
@@ -174,7 +177,7 @@ class _MainScreenState extends State<MainScreen> {
             // Ana içerik alanı
             Expanded(
               child: Container(
-                color: Theme.of(context).colorScheme.background,
+                color: Theme.of(context).colorScheme.surface,
                 child: _widgetOptions.elementAt(_selectedIndex),
               ),
             ),
@@ -188,12 +191,18 @@ class _MainScreenState extends State<MainScreen> {
       body: _widgetOptions.elementAt(_selectedIndex),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Anasayfa'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.camera_alt), label: 'Tarama'),
-          BottomNavigationBarItem(icon: Icon(Icons.folder), label: 'Paketler'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Hesap'),
+        items: <BottomNavigationBarItem>[
+          const BottomNavigationBarItem(
+              icon: Icon(Icons.home), label: 'Anasayfa'),
+          kIsWeb
+              ? const BottomNavigationBarItem(
+                  icon: Icon(Icons.upload_file), label: 'Yükle')
+              : const BottomNavigationBarItem(
+                  icon: Icon(Icons.camera_alt), label: 'Tarama'),
+          const BottomNavigationBarItem(
+              icon: Icon(Icons.folder), label: 'Paketler'),
+          const BottomNavigationBarItem(
+              icon: Icon(Icons.person), label: 'Hesap'),
         ],
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,

@@ -6,7 +6,12 @@ const controller = require('../controllers/package.controller');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-router.post('/', protect, upload.array('files', 30), controller.createPackage);
+router.post(
+  '/',
+  protect,
+  upload.array('files', 1000),
+  controller.createPackage
+);
 router.get('/', protect, controller.listPackages);
 router.get('/:packageId', protect, controller.getPackage);
 router.get('/:packageId/invoices', protect, controller.listPackageInvoices);

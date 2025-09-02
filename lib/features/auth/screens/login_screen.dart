@@ -177,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _buildInputField(
           controller: _identifierController,
           label: "E-posta veya Telefon",
-          hint: "ornek@email.com veya +905551234567",
+          hint: "Telefon veya E-posta Giriniz ",
           icon: Icons.person_outline,
         ),
         const SizedBox(height: 16),

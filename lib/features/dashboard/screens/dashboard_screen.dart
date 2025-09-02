@@ -15,6 +15,7 @@ import 'package:file_picker/file_picker.dart';
 
 import 'package:fatura_yeni/core/providers/theme_provider.dart';
 import 'package:fatura_yeni/core/constants/dashboard_constants.dart';
+import 'package:fatura_yeni/features/upload/screens/upload_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -253,7 +254,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (response['success'] == true) {
             // WebSocket'ten gelecek durumu bekleyerek anlık güncelleme sağla
             _showUploadSnackbar(
-                'Paket başarıyla oluşturuldu ve işleniyor.', false,
+                'Paket başarıyla oluşturuldu ve işleniyor.', true,
                 isSuccess: true);
             // Veriyi yenilemek için provider'ı tetikle
             if (!mounted) return;
@@ -321,9 +322,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final isWeb = kIsWeb;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isDesktop = screenWidth > 1200;
-    final isTablet = screenWidth > 768 && screenWidth <= 1200;
 
     return Scaffold(
       backgroundColor: _backgroundColor,
@@ -361,7 +359,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 final allInvoices = provider.invoices;
 
                 // Web için farklı layout
-                if (isWeb && (isDesktop || isTablet)) {
+                if (isWeb) {
                   return _buildWebDashboardContent(
                     context,
                     monthlyTotal,
@@ -383,13 +381,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: _primaryBlue,
-        onPressed: _showUploadOptions,
-        child: Icon(Icons.add, color: _white),
-      ),
+      floatingActionButton: kIsWeb
+          ? FloatingActionButton.extended(
+              backgroundColor: _primaryBlue,
+              onPressed: () => _handleFabClick(context),
+              tooltip: 'Yeni Paket Yükle',
+              icon: Icon(Icons.upload_file, color: _white),
+              label: Text('Dosya Yükle', style: TextStyle(color: _white)),
+            )
+          : FloatingActionButton(
+              backgroundColor: _primaryBlue,
+              onPressed: () => _handleFabClick(context),
+              tooltip: 'Fatura Ekle',
+              child: Icon(Icons.add, color: _white),
+            ),
       // bottomNavigationBar kaldırıldı: ana seviye navigasyon MainScreen'de yönetiliyor
     );
+  }
+
+  void _handleFabClick(BuildContext context) async {
+    if (kIsWeb) {
+      // Web'de UploadScreen'e git
+      final result = await Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => const UploadScreen()),
+      );
+      // Eğer yükleme başarılı olduysa (pop(true)), listeyi yenile
+      if (result == true) {
+        Provider.of<DashboardProvider>(context, listen: false).loadData();
+      }
+    } else {
+      // Mobilde ScanScreen'e git
+      _showUploadOptions();
+    }
   }
 
   Widget _buildErrorState([String? message]) {
