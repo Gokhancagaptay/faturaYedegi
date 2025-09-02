@@ -5,32 +5,30 @@ import 'dart:typed_data';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'dart:io' show SocketException;
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 class ApiService {
   // Backend URL seçimi: Platform'a göre otomatik
   static String get _baseUrl {
     if (kIsWeb) {
-      // Web için: Aynı domain'de çalışıyor
-      return "http://localhost:3000";
+      // Web'de çalışırken
+      return 'http://localhost:3000';
+    } else {
+      // Mobil (Android/iOS) cihazda çalışırken
+      // Fiziksel cihaz testi için bilgisayarınızın IP adresini kullanın
+      return 'http://192.168.137.1:3000';
     }
+  }
 
-    if (Platform.isAndroid) {
-      // Android emülatör için
-      if (Platform.environment.containsKey('ANDROID_EMULATOR')) {
-        return "http://10.0.2.2:3000";
-      }
-      // Fiziksel cihaz için: LAN IP kullan
-      return "http://192.168.4.73:3000";
+  // WebSocket URL seçimi
+  static String get _socketUrl {
+    if (kIsWeb) {
+      return 'ws://localhost:3000';
+    } else {
+      return 'ws://192.168.137.1:3000';
     }
-
-    if (Platform.isIOS) {
-      // iOS simülatör için
-      return "http://localhost:3000";
-    }
-
-    // Varsayılan
-    return "http://localhost:3000";
   }
 
   // API bağlantısını test et
@@ -858,5 +856,10 @@ class ApiService {
     } catch (e) {
       return null;
     }
+  }
+
+  WebSocketChannel connectWebSocket(String token) {
+    final uri = Uri.parse('$_socketUrl?token=$token');
+    return WebSocketChannel.connect(uri);
   }
 }

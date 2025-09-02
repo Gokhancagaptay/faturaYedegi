@@ -3,44 +3,36 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:provider/provider.dart'
+    as provider; // provider paketine ön ek ver
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fatura_yeni/core/theme/app_theme.dart';
 import 'package:fatura_yeni/core/providers/theme_provider.dart';
 
-import 'package:fatura_yeni/features/auth/screens/login_register_screen.dart';
-import 'package:fatura_yeni/l10n/app_localizations.dart';
-import 'package:fatura_yeni/firebase_options.dart';
+import 'package:fatura_yeni/features/auth/screens/login_register_screen.dart'; // Doğru başlangıç ekranı
 import 'package:fatura_yeni/features/dashboard/providers/dashboard_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
 
   try {
-    // Initialize Firebase only once
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
-
-    // Activate App Check in debug mode
-    try {
-      await FirebaseAppCheck.instance.activate(
-        androidProvider: AndroidProvider.debug,
-        appleProvider: AppleProvider.debug,
-      );
-    } catch (e) {
-      // App Check activation failures should not block app startup
-      // ignore
-    }
-
-    print('✅ Firebase başarıyla başlatıldı');
+    await FirebaseAppCheck.instance.activate(
+      webProvider: ReCaptchaV3Provider('recaptcha-v3-site-key'),
+      androidProvider: AndroidProvider.debug,
+      appleProvider: AppleProvider.appAttest,
+    );
+    // Başarılı aktivasyon logu (isteğe bağlı)
   } catch (e) {
-    print('❌ Firebase başlatma hatası: $e');
-    // Continue without Firebase
+    // Hata logu (isteğe bağlı)
   }
 
-  runApp(const MyApp());
+  runApp(
+    const ProviderScope(
+      // Riverpod için
+      child: MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -48,23 +40,24 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
+    return provider.MultiProvider(
+      // provider ön ekini kullan
       providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => DashboardProvider()),
+        provider.ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        provider.ChangeNotifierProvider(create: (_) => DashboardProvider()),
       ],
-      child: Consumer<ThemeProvider>(
+      child: provider.Consumer<ThemeProvider>(
+        // provider ön ekini kullan
         builder: (context, themeProvider, child) {
           return MaterialApp(
-            title: 'Scanner App',
-            debugShowCheckedModeBanner: false,
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
+            title: 'Fatura Yönetim Sistemi',
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
-            themeMode:
-                themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-            home: const LoginRegisterScreen(),
+            themeMode: themeProvider?.isDarkMode == true
+                ? ThemeMode.dark
+                : ThemeMode.light,
+            home: const LoginRegisterScreen(), // AuthWrapper yerine
+            debugShowCheckedModeBanner: false,
           );
         },
       ),
