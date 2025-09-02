@@ -83,14 +83,26 @@ class StructuredInvoice {
 class UrunKalemi {
   final String malHizmet;
   final Map<String, dynamic> fields;
+  final String? siraNo;
 
-  UrunKalemi({required this.malHizmet, required this.fields});
+  UrunKalemi({required this.malHizmet, required this.fields, this.siraNo});
 
   factory UrunKalemi.fromJson(Map<String, dynamic> json) {
     final Map<String, dynamic> otherFields = Map.from(json);
-    final String malHizmet =
-        otherFields.remove('mal_hizmet')?.toString() ?? 'N/A';
-    return UrunKalemi(malHizmet: malHizmet, fields: otherFields);
+    final String malHizmet = otherFields.remove('mal_hizmet')?.toString() ?? '';
+    final String? siraNo = otherFields.remove('sıra no')?.toString();
+    return UrunKalemi(
+        malHizmet: malHizmet, fields: otherFields, siraNo: siraNo);
+  }
+
+  String get displayName {
+    if (malHizmet.isNotEmpty && malHizmet != 'N/A') {
+      return malHizmet;
+    }
+    if (siraNo != null && siraNo!.isNotEmpty) {
+      return '$siraNo. Kalem';
+    }
+    return 'İsimsiz Kalem'; // Fallback
   }
 }
 
@@ -219,26 +231,37 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   Widget _buildWebLayout(BuildContext context, InvoiceDetail invoice) {
     return Row(
       children: [
-        // Sol Panel: PDF Görüntüleyici
+        // Sol Panel: Görüntüleyici
         Expanded(
           flex: 55,
-          child: FutureBuilder<Uint8List>(
-            future: http.get(Uri.parse(invoice.fileUrl)).then((response) {
-              if (response.statusCode == 200) {
-                return response.bodyBytes;
-              }
-              throw Exception('PDF yüklenemedi: ${response.statusCode}');
-            }),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError || !snapshot.hasData) {
-                return const Center(
-                    child: Text('Fatura önizlemesi yüklenemedi.'));
-              }
-              return SfPdfViewer.memory(snapshot.data!);
-            },
+          child: Container(
+            color: Colors.blueGrey[900],
+            alignment: Alignment.center,
+            child: InteractiveViewer(
+              child: Image.network(
+                invoice.thumbnailUrl,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Center(
+                    child: Text(
+                      'Fatura önizlemesi yüklenemedi.',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  );
+                },
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
         ),
         // Sağ Panel: Veri Alanı
@@ -344,6 +367,23 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
 
   Widget _buildSmartSummaryCard(
       BuildContext context, StructuredInvoice structured) {
+    final List<Widget> summaryRows = [];
+
+    // Dinamik olarak dolu alanları ekle
+    if (structured.saticiUnvani != null &&
+        structured.saticiUnvani!.isNotEmpty) {
+      summaryRows.add(_buildInfoRow("Satıcı Ünvanı", structured.saticiUnvani));
+    }
+    if (structured.faturaTarihi != null &&
+        structured.faturaTarihi!.isNotEmpty) {
+      summaryRows.add(_buildInfoRow("Fatura Tarihi", structured.faturaTarihi));
+    }
+    if (structured.faturaNumarasi != null &&
+        structured.faturaNumarasi!.isNotEmpty) {
+      summaryRows
+          .add(_buildInfoRow("Fatura Numarası", structured.faturaNumarasi));
+    }
+
     return Card(
       color: Colors.white,
       elevation: 2,
@@ -354,13 +394,9 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           children: [
             _buildInfoRow("Ödenecek Tutar", structured.odenecekTutar,
                 isLarge: true),
-            const Divider(height: 24),
-            _buildInfoRow("Satıcı Ünvanı", structured.saticiUnvani,
-                emptyText: "Satıcı Bilgisi Belirtilmemiş"),
-            _buildInfoRow("Fatura Tarihi", structured.faturaTarihi,
-                emptyText: "Fatura Tarihi Bulunamadı"),
-            _buildInfoRow("Fatura Numarası", structured.faturaNumarasi,
-                emptyText: "Fatura Numarası Bulunamadı"),
+            if (summaryRows.isNotEmpty) const Divider(height: 24),
+            // Sadece dolu olan satırları göster
+            ...summaryRows,
           ],
         ),
       ),
@@ -417,6 +453,77 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     if (structured.urunKalemleri.isEmpty) {
       return const SizedBox.shrink();
     }
+
+    // WEB: Daha okunaklı, sarmalayan bir grid tasarımı kullan.
+    if (isWeb) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Ürün ve Hizmet Kalemleri",
+              style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          ...structured.urunKalemleri.map((item) {
+            final validFields = item.fields.entries.where((entry) {
+              final value = entry.value;
+              return value != null && value.toString().isNotEmpty;
+            }).toList();
+
+            return Card(
+              color: Colors.white,
+              elevation: 2,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      item.displayName,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const Divider(height: 20),
+                    Wrap(
+                      spacing: 24.0, // Yatay boşluk
+                      runSpacing: 12.0, // Dikey boşluk
+                      children: validFields.map((entry) {
+                        return SizedBox(
+                          width: 180, // Her bir öğenin genişliği
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _formatFieldName(entry.key),
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.grey),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                entry.value.toString(),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF323232),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    )
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      );
+    }
+
+    // MOBİL: Mevcut kart listesi tasarımını koru.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -435,11 +542,16 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(item.malHizmet,
+                    Text(item.displayName,
                         style: const TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 16)),
                     const Divider(),
-                    ...item.fields.entries.map((entry) => Padding(
+                    ...item.fields.entries.where((entry) {
+                      final value = entry.value;
+                      if (value == null) return false;
+                      if (value is String && value.isEmpty) return false;
+                      return true;
+                    }).map((entry) => Padding(
                           padding: const EdgeInsets.only(top: 4.0),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -466,7 +578,17 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   Widget _buildOtherFieldsCard(
       BuildContext context, StructuredInvoice structured,
       {required bool isWeb}) {
-    if (structured.otherFields.isEmpty) {
+    // Sadece değeri olan alanları filtrele
+    final validOtherFields = structured.otherFields.entries.where((entry) {
+      final value = entry.value;
+      if (value == null) return false;
+      if (value is String && value.isEmpty) return false;
+      // Diğer tipler (örn: int, double) dolu kabul edilir.
+      return true;
+    }).toList();
+
+    // Gösterilecek alan yoksa kartı hiç gösterme
+    if (validOtherFields.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -495,9 +617,9 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 8,
                 ),
-                itemCount: structured.otherFields.length,
+                itemCount: validOtherFields.length,
                 itemBuilder: (context, index) {
-                  final entry = structured.otherFields.entries.elementAt(index);
+                  final entry = validOtherFields[index];
                   final value = entry.value;
                   final isValueMissing =
                       value == null || (value is String && value.isEmpty);
@@ -544,7 +666,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                     fontSize: 18,
                     fontWeight: FontWeight.bold)),
             const Divider(),
-            ...structured.otherFields.entries.map((entry) {
+            ...validOtherFields.map((entry) {
               final value = entry.value;
               final bool isValueMissing =
                   value == null || (value is String && value.isEmpty);
