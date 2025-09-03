@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fatura_yeni/core/services/storage_service.dart';
 import 'package:flutter/material.dart';
 import 'package:pinput/pinput.dart';
-import 'package:fatura_yeni/features/main/main_screen.dart';
+import 'package:fatura_yeni/features/auth/screens/login_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phoneNumber;
@@ -93,8 +93,18 @@ class _OtpScreenState extends State<OtpScreen> {
       if (token != null) {
         await _storageService.saveToken(token);
         if (mounted) {
+          // Başarı mesajı göster
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Kayıt başarılı! Lütfen giriş yapın.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+
+          // Login ekranına yönlendir
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const MainScreen()),
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
             (Route<dynamic> route) => false,
           );
         }

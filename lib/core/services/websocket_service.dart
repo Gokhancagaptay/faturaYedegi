@@ -71,6 +71,23 @@ class WebSocketService {
     }
   }
 
+  // WebSocket bağlantısını kapat
+  Future<void> disconnect() async {
+    if (_channel != null) {
+      try {
+        await _channel!.sink.close(status.goingAway);
+        print('🔌 WebSocket bağlantısı kapatıldı');
+      } catch (e) {
+        print('❌ WebSocket kapatma hatası: $e');
+      }
+    }
+
+    _reconnectTimer?.cancel();
+    _isConnected = false;
+    _token = null;
+    _userId = null;
+  }
+
   // Mesaj gönder
   void _sendMessage(Map<String, dynamic> message) {
     if (_channel != null && _isConnected) {

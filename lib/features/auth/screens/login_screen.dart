@@ -2,6 +2,7 @@
 
 import 'package:fatura_yeni/core/services/api_service.dart';
 import 'package:fatura_yeni/core/services/storage_service.dart';
+import 'package:fatura_yeni/core/services/websocket_service.dart';
 import 'package:fatura_yeni/features/main/main_screen.dart';
 import 'package:fatura_yeni/features/auth/screens/register_screen.dart';
 import 'package:flutter/material.dart';
@@ -45,15 +46,20 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      // Eski token'ı ve WebSocket bağlantısını temizle
+      await _storageService.deleteToken();
+      await WebSocketService().disconnect();
+      print('🔐 Login - Eski token ve WebSocket temizlendi');
+
       final resp = await _apiService.loginWithPassword(
         identifier: identifier,
         password: _passwordController.text,
       );
       final token = resp['token'] as String?;
       if (token == null) throw Exception('Token alınamadı');
-      print('🔐 Login - Token alındı: ${token.substring(0, 10)}...');
+      print('🔐 Login - Yeni token alındı: ${token.substring(0, 10)}...');
       await _storageService.saveToken(token);
-      print('🔐 Login - Token kaydedildi');
+      print('🔐 Login - Yeni token kaydedildi');
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const MainScreen()),
