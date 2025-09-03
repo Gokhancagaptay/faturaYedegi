@@ -409,12 +409,22 @@ class ApiService {
 
       if (response.statusCode == 202) {
         // 202 Accepted durumunda, işlem başarıyla kuyruğa alındı demektir.
-        // Body boş olabilir, bu yüzden varsayılan bir başarı mesajı döndürelim.
-        if (response.body.isEmpty) {
+        try {
+          final responseData =
+              json.decode(response.body) as Map<String, dynamic>;
           return {
             'success': true,
-            'message': 'Package creation accepted and is in progress.',
-            'package': {'id': null} // ID henüz bilinmiyor olabilir
+            'message': 'Paket başarıyla oluşturuldu ve işleniyor.',
+            'packageId': responseData['packageId'],
+            'status': responseData['status'],
+            'total': responseData['total']
+          };
+        } catch (e) {
+          // JSON parse hatası durumunda varsayılan başarı mesajı
+          return {
+            'success': true,
+            'message': 'Paket başarıyla oluşturuldu ve işleniyor.',
+            'package': {'id': null}
           };
         }
       }

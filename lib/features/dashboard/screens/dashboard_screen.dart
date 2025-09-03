@@ -186,10 +186,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _buildUploadOption(
                   icon: Icons.photo_library,
                   title: 'Galeriden Fotoğraf Seç (Paket)',
-                  subtitle: 'Tek veya çoklu seçim paket olur',
+                  subtitle: 'Sadece fotoğraflar — tek/çoklu',
                   onTap: () async {
                     Navigator.of(context).pop();
-                    await _pickMultipleFiles();
+                    await _pickPhotos();
                   },
                 ),
                 _buildUploadOption(
@@ -227,11 +227,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Future<void> _pickMultipleFiles() async {
+  // Sadece fotoğrafları seç
+  Future<void> _pickPhotos() async {
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        type: FileType.image, // Sadece resimler
         allowMultiple: true,
       );
       final List<PlatformFile>? files = result?.files;
@@ -239,7 +239,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (files != null && files.isNotEmpty) {
         // Yükleme işlemini başlat ve kullanıcıyı bilgilendir
         if (!mounted) return;
-        _showUploadSnackbar('Fatura paketi oluşturuluyor...', false);
+        _showUploadSnackbar('Fotoğraf paketi oluşturuluyor...', false);
 
         try {
           final token = await _storageService.getToken();
@@ -254,7 +254,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (response['success'] == true) {
             // WebSocket'ten gelecek durumu bekleyerek anlık güncelleme sağla
             _showUploadSnackbar(
-                'Paket başarıyla oluşturuldu ve işleniyor.', true,
+                'Fotoğraf paketi başarıyla oluşturuldu ve işleniyor.', false,
                 isSuccess: true);
             // Veriyi yenilemek için provider'ı tetikle
             if (!mounted) return;
@@ -266,14 +266,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _showUploadSnackbar(errorMessage, true);
           }
         } catch (e) {
-          _showUploadSnackbar('Dosya yükleme hatası: $e', true);
+          _showUploadSnackbar('Fotoğraf yükleme hatası: $e', true);
         }
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Yükleme başarısız: $e')));
+      ).showSnackBar(SnackBar(content: Text('Fotoğraf seçimi başarısız: $e')));
+    }
+  }
+
+  // Tüm dosya türlerini seç (PDF, JPG, PNG)
+  Future<void> _pickMultipleFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        allowMultiple: true,
+      );
+      final List<PlatformFile>? files = result?.files;
+
+      if (files != null && files.isNotEmpty) {
+        // Yükleme işlemini başlat ve kullanıcıyı bilgilendir
+        if (!mounted) return;
+        _showUploadSnackbar('Belge paketi oluşturuluyor...', false);
+
+        try {
+          final token = await _storageService.getToken();
+          if (token == null) {
+            _showUploadSnackbar(
+                'Oturum hatası. Lütfen tekrar giriş yapın.', true);
+            return;
+          }
+
+          final response = await _apiService.createPackage(files, token);
+
+          if (response['success'] == true) {
+            // WebSocket'ten gelecek durumu bekleyerek anlık güncelleme sağla
+            _showUploadSnackbar(
+                'Belge paketi başarıyla oluşturuldu ve işleniyor.', false,
+                isSuccess: true);
+            // Veriyi yenilemek için provider'ı tetikle
+            if (!mounted) return;
+            await Provider.of<DashboardProvider>(context, listen: false)
+                .loadData(silent: true);
+          } else {
+            final errorMessage =
+                response['message'] as String? ?? 'Bilinmeyen bir hata oluştu.';
+            _showUploadSnackbar(errorMessage, true);
+          }
+        } catch (e) {
+          _showUploadSnackbar('Belge yükleme hatası: $e', true);
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Belge seçimi başarısız: $e')));
     }
   }
 
@@ -285,10 +336,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError
-            ? Colors.redAccent
-            : isSuccess
-                ? Colors.green
+        backgroundColor: isSuccess
+            ? Colors.green
+            : isError
+                ? Colors.redAccent
                 : Theme.of(context).primaryColor,
         duration: Duration(seconds: isError ? 5 : 3),
       ),
@@ -401,14 +452,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _handleFabClick(BuildContext context) async {
     if (kIsWeb) {
-      // Web'de UploadScreen'e git
-      final result = await Navigator.of(context).push(
+      // Web'de UploadScreen'e git - yönlendirme yok, sadece aç
+      await Navigator.of(context).push(
         MaterialPageRoute(builder: (context) => const UploadScreen()),
       );
-      // Eğer yükleme başarılı olduysa (pop(true)), listeyi yenile
-      if (result == true) {
-        Provider.of<DashboardProvider>(context, listen: false).loadData();
-      }
     } else {
       // Mobilde ScanScreen'e git
       _showUploadOptions();
@@ -417,34 +464,100 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildErrorState([String? message]) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline, size: 64, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text(
-            'Faturalar yüklenirken hata oluştu',
-            style: TextStyle(color: Colors.grey[600], fontSize: 16),
-          ),
-          if (message != null) ...[
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32.0),
-              child: Text(
-                message,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[500], fontSize: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: _errorRed.withAlpha((255 * 0.1).round()),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.error_outline,
+                size: 60,
+                color: _errorRed,
               ),
             ),
+            const SizedBox(height: 24),
+            Text(
+              'Veriler yüklenirken hata oluştu',
+              style: TextStyle(
+                color: _textColor,
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Lütfen internet bağlantınızı kontrol edin ve tekrar deneyin.',
+              style: TextStyle(
+                color: _textColorSecondary,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (message != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _errorRed.withAlpha((255 * 0.1).round()),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _errorRed,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 32),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Provider.of<DashboardProvider>(context, listen: false)
+                        .loadData();
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Tekrar Dene'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryBlue,
+                    foregroundColor: _white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pushReplacementNamed('/login');
+                  },
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Çıkış Yap'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _textColor,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () =>
-                Provider.of<DashboardProvider>(context, listen: false)
-                    .loadData(),
-            child: const Text('Tekrar Dene'),
-          ),
-        ],
+        ),
       ),
     );
   }

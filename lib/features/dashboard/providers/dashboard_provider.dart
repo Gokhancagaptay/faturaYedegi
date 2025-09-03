@@ -35,21 +35,28 @@ class DashboardProvider with ChangeNotifier {
 
     try {
       final token = await _storageService.getToken();
-      if (token == null) throw Exception('Authentication token not found.');
+      if (token == null) {
+        throw Exception('Oturum hatası. Lütfen tekrar giriş yapın.');
+      }
 
-      final results = await Future.wait([
-        _loadAllInvoices(token),
-        _loadPackages(token),
-      ]);
-
-      _invoices = results[0] as List<Invoice>;
-      _packages = results[1] as List<Map<String, dynamic>>;
+      // Veri yükleme işlemlerini sırayla yap (paralel değil)
+      _packages = await _loadPackages(token);
+      _invoices = await _loadAllInvoices(token);
 
       _status = DashboardStatus.loaded;
-      _initializeWebSocket(token);
+      _errorMessage = null; // Hata mesajını temizle
+
+      // WebSocket'i arka planda başlat (hata olsa bile dashboard çalışsın)
+      _initializeWebSocket(token).catchError((e) {
+        print('WebSocket başlatma hatası: $e');
+      });
     } catch (e) {
-      _status = DashboardStatus.error;
-      _errorMessage = e.toString();
+      // Silent mode'da hata durumunda status'u değiştirme
+      if (!silent) {
+        _status = DashboardStatus.error;
+        _errorMessage = e.toString();
+      }
+      print('Dashboard veri yükleme hatası: $e');
     }
 
     if (!_isDisposed) {
@@ -58,34 +65,55 @@ class DashboardProvider with ChangeNotifier {
   }
 
   Future<List<Invoice>> _loadAllInvoices(String token) async {
-    final packagesResponse = await _apiService.getPackages(token);
-    final List<dynamic> packagesList = packagesResponse['packages'] ?? [];
-    List<Invoice> allInvoices = [];
-    for (final package in packagesList) {
-      try {
-        final packageId = package['id'].toString();
-        final packageInvoicesResponse =
-            await _apiService.getPackageInvoices(token, packageId);
-        final List<dynamic> packageInvoices =
-            packageInvoicesResponse['invoices'] ?? [];
-        final packageInvoicesList = packageInvoices.map((json) {
-          final invoiceData = Map<String, dynamic>.from(json);
-          invoiceData['packageId'] = packageId;
-          return Invoice.fromJson(invoiceData);
-        }).toList();
-        allInvoices.addAll(packageInvoicesList);
-      } catch (e) {
-        continue;
+    try {
+      final packagesResponse = await _apiService.getPackages(token);
+      final List<dynamic> packagesList = packagesResponse['packages'] ?? [];
+      List<Invoice> allInvoices = [];
+
+      for (final package in packagesList) {
+        try {
+          final packageId = package['id']?.toString();
+          if (packageId == null || packageId.isEmpty) continue;
+
+          final packageInvoicesResponse =
+              await _apiService.getPackageInvoices(token, packageId);
+          final List<dynamic> packageInvoices =
+              packageInvoicesResponse['invoices'] ?? [];
+
+          for (final json in packageInvoices) {
+            try {
+              final invoiceData = Map<String, dynamic>.from(json);
+              invoiceData['packageId'] = packageId;
+              final invoice = Invoice.fromJson(invoiceData);
+              allInvoices.add(invoice);
+            } catch (e) {
+              print('Fatura parse hatası: $e');
+              continue;
+            }
+          }
+        } catch (e) {
+          print('Paket faturaları yükleme hatası: $e');
+          continue;
+        }
       }
+
+      allInvoices.sort((a, b) => b.date.compareTo(a.date));
+      return allInvoices;
+    } catch (e) {
+      print('Tüm faturaları yükleme hatası: $e');
+      return []; // Boş liste döndür, dashboard çöksün
     }
-    allInvoices.sort((a, b) => b.date.compareTo(a.date));
-    return allInvoices;
   }
 
   Future<List<Map<String, dynamic>>> _loadPackages(String token) async {
-    final res = await _apiService.getPackages(token);
-    final List<dynamic> list = res['packages'] ?? [];
-    return list.cast<Map<String, dynamic>>();
+    try {
+      final res = await _apiService.getPackages(token);
+      final List<dynamic> list = res['packages'] ?? [];
+      return list.cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('Paketler yükleme hatası: $e');
+      return []; // Boş liste döndür, dashboard çöksün
+    }
   }
 
   Future<void> _initializeWebSocket(String token) async {

@@ -148,24 +148,39 @@ class _UploadScreenState extends State<UploadScreen> {
   }
 
   Widget _buildUploadButton() {
-    return ElevatedButton.icon(
-      icon: _isUploading
-          ? Container(
-              width: 24,
-              height: 24,
-              padding: const EdgeInsets.all(2.0),
-              child: const CircularProgressIndicator(
-                color: Colors.white,
-                strokeWidth: 3,
-              ),
-            )
-          : const Icon(Icons.analytics_outlined),
-      label:
-          Text(_isUploading ? 'Yükleniyor...' : 'Analiz Et ve Paket Oluştur'),
-      onPressed: _files.isEmpty || _isUploading ? null : _createPackage,
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+    return Container(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton.icon(
+        icon: _isUploading
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2.5,
+                ),
+              )
+            : const Icon(Icons.analytics_outlined, size: 24),
+        label: Text(
+          _isUploading
+              ? 'Paket Oluşturuluyor...'
+              : 'Analiz Et ve Paket Oluştur',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        onPressed: _files.isEmpty || _isUploading ? null : _createPackage,
+        style: ElevatedButton.styleFrom(
+          backgroundColor:
+              _isUploading ? Colors.grey[400] : Theme.of(context).primaryColor,
+          foregroundColor: Colors.white,
+          elevation: _isUploading ? 0 : 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
       ),
     );
   }
@@ -235,37 +250,88 @@ class _UploadScreenState extends State<UploadScreen> {
   }
 
   Future<void> _createPackage() async {
+    if (!mounted) return;
+
     setState(() {
       _isUploading = true;
     });
 
     try {
+      // İlk feedback: Token kontrolü
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Paket oluşturuluyor...'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+
+      // Token kontrolü
       final token = await _storageService.getToken();
       if (token == null) {
         throw Exception('Oturum hatası. Lütfen tekrar giriş yapın.');
       }
 
+      // API çağrısı
       final response = await _apiService.createPackage(_files, token);
 
       if (mounted) {
         if (response['success'] == true) {
+          // Başarı mesajını göster
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Paket başarıyla oluşturuldu ve işleniyor.'),
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(response['message'] ??
+                        'Paket başarıyla oluşturuldu ve işleniyor.'),
+                  ),
+                ],
+              ),
               backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
             ),
           );
-          Navigator.of(context).pop(true); // Go back with success state
+
+          // Paket oluşturuldu, aynı ekranda kal
+          // Dosya listesini temizle
+          setState(() {
+            _files.clear();
+          });
         } else {
           throw Exception(response['message'] ?? 'Bilinmeyen bir hata oluştu.');
         }
       }
     } catch (e) {
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Paket oluşturulamadı: $e'),
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Paket oluşturulamadı: $e'),
+                ),
+              ],
+            ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Tekrar Dene',
+              textColor: Colors.white,
+              onPressed: () {
+                if (!_isUploading) {
+                  _createPackage();
+                }
+              },
+            ),
           ),
         );
       }
