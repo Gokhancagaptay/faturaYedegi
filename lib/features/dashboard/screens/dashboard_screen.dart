@@ -9,8 +9,10 @@ import 'package:fatura_yeni/features/dashboard/models/invoice_model.dart';
 import 'package:fatura_yeni/features/dashboard/providers/dashboard_provider.dart';
 import 'package:fatura_yeni/core/services/api_service.dart';
 import 'package:fatura_yeni/core/services/storage_service.dart';
+import 'package:fatura_yeni/core/services/websocket_service.dart';
 import 'package:fatura_yeni/features/scan/screens/scan_screen.dart';
 import 'package:fatura_yeni/features/invoices/screens/invoice_detail_screen.dart';
+import 'package:fatura_yeni/features/auth/screens/login_register_screen.dart';
 import 'package:file_picker/file_picker.dart';
 
 import 'package:fatura_yeni/core/providers/theme_provider.dart';
@@ -33,6 +35,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Services needed for actions
   final ApiService _apiService = ApiService();
   final StorageService _storageService = StorageService();
+
+  @override
+  void initState() {
+    super.initState();
+    // Dashboard'a geldiğinde veri yükleme işlemini başlat
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<DashboardProvider>(context, listen: false);
+      if (provider.status == DashboardStatus.initial) {
+        print('🔄 Dashboard initState - Veri yükleme başlatılıyor');
+        provider.loadData();
+      }
+    });
+  }
 
   // Tema renklerini al (dynamic theme)
   Color get _primaryBlue => context.watch<ThemeProvider>().isDarkMode
@@ -391,7 +406,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 final invoices = provider.invoices;
                 final packages = provider.packages;
 
+                print(
+                    '📊 Dashboard UI - Paketler: ${packages.length}, Faturalar: ${invoices.length}');
+
                 if (invoices.isEmpty) {
+                  print('📊 Dashboard UI - Empty state gösteriliyor');
                   return _buildEmptyState();
                 }
 
@@ -542,7 +561,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(width: 16),
                 OutlinedButton.icon(
                   onPressed: () {
-                    Navigator.of(context).pushReplacementNamed('/login');
+                    _logout();
                   },
                   icon: const Icon(Icons.logout),
                   label: const Text('Çıkış Yap'),
@@ -2294,5 +2313,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ],
     );
+  }
+
+  // Logout metodu
+  void _logout() async {
+    try {
+      final storageService = StorageService();
+
+      // Token'ı, WebSocket bağlantısını ve dashboard verilerini temizle
+      await storageService.deleteToken();
+      WebSocketService().disconnect();
+
+      // Dashboard verilerini temizle
+      if (mounted) {
+        final dashboardProvider =
+            Provider.of<DashboardProvider>(context, listen: false);
+        dashboardProvider.clearData();
+      }
+
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginRegisterScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      // Hata durumunda da giriş ekranına yönlendir
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginRegisterScreen()),
+          (route) => false,
+        );
+      }
+    }
   }
 }

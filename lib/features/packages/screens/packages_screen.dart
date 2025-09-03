@@ -3,8 +3,10 @@ import 'package:provider/provider.dart';
 
 import 'package:fatura_yeni/core/services/api_service.dart';
 import 'package:fatura_yeni/core/services/storage_service.dart';
+import 'package:fatura_yeni/core/services/websocket_service.dart';
 import 'package:fatura_yeni/features/packages/screens/package_detail_screen.dart';
 import 'package:fatura_yeni/features/auth/screens/login_register_screen.dart';
+import 'package:fatura_yeni/features/dashboard/providers/dashboard_provider.dart';
 import 'package:fatura_yeni/core/providers/theme_provider.dart';
 import 'package:fatura_yeni/core/constants/dashboard_constants.dart';
 
@@ -525,7 +527,17 @@ class _PackagesScreenState extends State<PackagesScreen> {
 
   void _logout(BuildContext context) async {
     try {
+      // Token'ı, WebSocket bağlantısını ve dashboard verilerini temizle
       await _storage.deleteToken();
+      WebSocketService().disconnect();
+
+      // Dashboard verilerini temizle
+      if (mounted) {
+        final dashboardProvider =
+            Provider.of<DashboardProvider>(context, listen: false);
+        dashboardProvider.clearData();
+      }
+
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(

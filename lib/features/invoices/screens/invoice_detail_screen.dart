@@ -294,7 +294,8 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       Navigator.of(context).pop(); // "Onaylanıyor" dialog'unu kapat
 
       // Backend'den dönen yanıtı kontrol et
-      if (response['success'] == true) {
+      if (response['success'] == true ||
+          response['message']?.contains('onaylandı') == true) {
         setState(() {
           _originalInvoice?.structured.isApproved = true;
           _originalInvoice?.structured.status = 'approved';
@@ -316,9 +317,15 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       if (!mounted) return; // Async sonrası mounted kontrolü
       Navigator.of(context).pop(); // "Onaylanıyor" dialog'unu kapat
       if (mounted) {
+        String errorMessage = e.toString();
+        // Backend'den gelen mesajı temizle
+        if (errorMessage.contains('Exception: ')) {
+          errorMessage = errorMessage.replaceFirst('Exception: ', '');
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text("Hata: Fatura onaylanamadı. $e"),
+              content: Text("Hata: $errorMessage"),
               backgroundColor: Colors.red),
         );
       }

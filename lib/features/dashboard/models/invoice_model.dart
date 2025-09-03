@@ -36,14 +36,16 @@ class Invoice {
   // JSON'dan Invoice nesnesine dönüştürme
   factory Invoice.fromJson(Map<String, dynamic> json) {
     final structuredData = json['structured'] as Map<String, dynamic>? ?? {};
+    final fileName = json['originalName'] as String? ?? '';
+    final isPdf = fileName.toLowerCase().endsWith('.pdf');
 
     return Invoice(
       id: json['id'] as String? ?? '',
-      sellerName: _extractSellerName(structuredData),
-      date: _extractInvoiceDate(structuredData, json),
-      totalAmount: _extractTotalAmount(structuredData),
+      sellerName: _extractSellerName(structuredData, fileName, isPdf),
+      date: _extractInvoiceDate(structuredData, json, fileName, isPdf),
+      totalAmount: _extractTotalAmount(structuredData, fileName, isPdf),
       status: json['status'] as String?,
-      fileName: json['originalName'] as String?,
+      fileName: fileName,
       fileUrl: json['fileUrl'] as String?,
       thumbnailUrl: json['thumbnailUrl'] as String?,
       uploadedAt: _parseDate(json['uploadedAt']),
@@ -57,10 +59,11 @@ class Invoice {
 
   // --- Yardımcı Metodlar ---
 
-  static String _extractSellerName(Map<String, dynamic> structuredData) {
+  static String _extractSellerName(
+      Map<String, dynamic> structuredData, String fileName, bool isPdf) {
     // Birden fazla olası anahtarı kontrol et
     final keys = ['satici_unvan', 'satici_ad_soyad', 'alici_unvan'];
-    String rawName = 'Bilinmeyen Satıcı';
+    String rawName = '';
 
     for (var key in keys) {
       if (structuredData.containsKey(key) && structuredData[key] is String) {
@@ -69,12 +72,28 @@ class Invoice {
       }
     }
 
+    // Eğer structured data yoksa veya boşsa, dosya adından çıkarmaya çalış
+    if (rawName.isEmpty && isPdf) {
+      // PDF dosya adından satıcı adını çıkarmaya çalış
+      final parts = fileName.split('-');
+      if (parts.length > 1) {
+        rawName = parts[1].trim();
+      }
+    }
+
+    if (rawName.isEmpty) {
+      return isPdf ? 'PDF Fatura' : 'Bilinmeyen Satıcı';
+    }
+
     final cleanName = rawName.split('Fatura Tipi:').first.trim();
-    if (cleanName.isEmpty) return 'Bilinmeyen Satıcı';
+    if (cleanName.isEmpty) {
+      return isPdf ? 'PDF Fatura' : 'Bilinmeyen Satıcı';
+    }
     return cleanName;
   }
 
-  static double _extractTotalAmount(Map<String, dynamic> structuredData) {
+  static double _extractTotalAmount(
+      Map<String, dynamic> structuredData, String fileName, bool isPdf) {
     // Birden fazla olası anahtarı kontrol et
     final keys = ['odenecek_tutar', 'toplam_tutar', 'genel_toplam'];
     String amountString = '0.0';
@@ -84,6 +103,11 @@ class Invoice {
         amountString = structuredData[key];
         break;
       }
+    }
+
+    // Eğer structured data yoksa ve PDF ise, 0.0 döndür (henüz işlenmemiş)
+    if (amountString == '0.0' && isPdf && structuredData.isEmpty) {
+      return 0.0;
     }
 
     try {
@@ -99,14 +123,30 @@ class Invoice {
     }
   }
 
-  static DateTime _extractInvoiceDate(
-      Map<String, dynamic> structuredData, Map<String, dynamic> invoice) {
+  static DateTime _extractInvoiceDate(Map<String, dynamic> structuredData,
+      Map<String, dynamic> invoice, String fileName, bool isPdf) {
     // Structured datadan almayı dene
     final dateKeys = ['fatura_tarihi', 'duzenlenme_tarihi'];
     for (var key in dateKeys) {
       if (structuredData.containsKey(key) && structuredData[key] is String) {
         final dateStr = structuredData[key];
         // "DD.MM.YYYY" veya "DD-MM-YYYY" formatlarını dene
+        try {
+          final parts = dateStr.replaceAll('.', '-').split('-');
+          if (parts.length == 3) {
+            final parsedDate =
+                DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}');
+            if (parsedDate != null) return parsedDate;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // Eğer structured data yoksa ve PDF ise, dosya adından tarih çıkarmaya çalış
+    if (isPdf && structuredData.isEmpty) {
+      final match = RegExp(r'(\d{2}[-.]\d{2}[-.]\d{4})').firstMatch(fileName);
+      if (match != null && match.groupCount > 0) {
+        final dateStr = match.group(1)!;
         try {
           final parts = dateStr.replaceAll('.', '-').split('-');
           if (parts.length == 3) {

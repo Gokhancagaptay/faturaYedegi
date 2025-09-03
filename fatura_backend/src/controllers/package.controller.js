@@ -17,6 +17,10 @@ const createPackage = async (req, res) => {
         const pkg = await packageRepo.createPackage(userId, { name, totalInvoices: files.length });
         console.log(`📦 Package created: ${pkg.id}`);
 
+        // WebSocket bildirimi gönder - paket oluşturuldu
+        const WebSocketService = require('../services/websocket.service');
+        WebSocketService.sendPackageStatusUpdate(userId, pkg.id, 'uploading');
+
         // Kuyruk: her dosya için bir iş
         for (const file of files) {
             console.log(`📦 Adding file to queue: ${file.originalname}`);
@@ -90,11 +94,17 @@ const processFileInPackage = async (userId, packageId, file) => {
         });
         console.log(`📦 Invoice updated with URLs`);
         
+        // WebSocket bildirimi gönder - fatura kuyruğa alındı
+        const WebSocketService = require('../services/websocket.service');
+        WebSocketService.sendInvoiceStatusUpdate(userId, invoiceDoc.id, 'queued', packageId);
 
         // 3) İşleme -> processing (Python parser opsiyonel)
         await packageRepo.updateInvoice(userId, packageId, invoiceDoc.id, { 
             status: 'processing' 
         });
+        
+        // WebSocket bildirimi gönder - fatura işleniyor
+        WebSocketService.sendInvoiceStatusUpdate(userId, invoiceDoc.id, 'processing', packageId);
         
         let processed = null;
         let ms = 0;
@@ -120,14 +130,18 @@ const processFileInPackage = async (userId, packageId, file) => {
             ...(processed && (processed.structured || processed.yapilandirilmis_veri)) || {}
         };
 
+        const finalStatus = processed?.status === 'uploaded_only' ? 'uploaded' : 'processed';
         await packageRepo.updateInvoice(userId, packageId, invoiceDoc.id, {
-            status: processed?.status === 'uploaded_only' ? 'uploaded' : 'processed',
+            status: finalStatus,
             structured: finalStructuredData,
             ocrText: processed?.ocrText,
             lastProcessedAt: new Date(),
             processingMs: ms,
             isApproved: false, // Varsayılan olarak onaylanmamış
         });
+        
+        // WebSocket bildirimi gönder - fatura işlendi
+        WebSocketService.sendInvoiceStatusUpdate(userId, invoiceDoc.id, finalStatus, packageId);
         
         if (processed?.status === 'uploaded_only') {
             await packageRepo.incrementCounters(userId, packageId, { uploaded: 1 });
@@ -140,6 +154,11 @@ const processFileInPackage = async (userId, packageId, file) => {
             status: 'failed',
             errors: [{ code: 'PROCESS_FAILED', message: err.message }]
         });
+        
+        // WebSocket bildirimi gönder - fatura işleme hatası
+        const WebSocketService = require('../services/websocket.service');
+        WebSocketService.sendInvoiceStatusUpdate(userId, invoiceDoc?.id, 'failed', packageId);
+        
         await packageRepo.incrementCounters(userId, packageId, { errors: 1 });
     }
 };
@@ -402,7 +421,12 @@ const approveInvoice = async (req, res) => {
         const userId = req.user?.uid || req.user?.id;
         const { packageId, invoiceId } = req.params;
         await packageRepo.updateInvoice(userId, packageId, invoiceId, { isApproved: true, status: 'approved' });
-        res.status(200).json({ message: 'Fatura onaylandı.' });
+        
+        // WebSocket bildirimi gönder
+        const WebSocketService = require('../services/websocket.service');
+        WebSocketService.sendInvoiceStatusUpdate(userId, invoiceId, 'approved', packageId);
+        
+        res.status(200).json({ success: true, message: 'Fatura onaylandı.' });
     } catch (e) {
         console.error('approveInvoice error:', e);
         res.status(500).json({ message: 'Failed to approve invoice', error: e.message });
@@ -414,7 +438,12 @@ const rejectInvoice = async (req, res) => {
         const userId = req.user?.uid || req.user?.id;
         const { packageId, invoiceId } = req.params;
         await packageRepo.updateInvoice(userId, packageId, invoiceId, { isApproved: false, status: 'rejected' });
-        res.status(200).json({ message: 'Fatura reddedildi.' });
+        
+        // WebSocket bildirimi gönder
+        const WebSocketService = require('../services/websocket.service');
+        WebSocketService.sendInvoiceStatusUpdate(userId, invoiceId, 'rejected', packageId);
+        
+        res.status(200).json({ success: true, message: 'Fatura reddedildi.' });
     } catch (e) {
         console.error('rejectInvoice error:', e);
         res.status(500).json({ message: 'Failed to reject invoice', error: e.message });
@@ -436,6 +465,10 @@ const updateStructuredData = async (req, res) => {
             structured: updatedData,
             lastEditedAt: new Date() // Düzenleme zamanını kaydet
         });
+
+        // WebSocket bildirimi gönder
+        const WebSocketService = require('../services/websocket.service');
+        WebSocketService.sendInvoiceStatusUpdate(userId, invoiceId, 'updated', packageId);
 
         res.status(200).json({ success: true, message: 'Fatura verileri başarıyla güncellendi.' });
     } catch (e) {

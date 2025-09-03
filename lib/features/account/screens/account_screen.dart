@@ -1,9 +1,12 @@
 // lib/features/account/screens/account_screen.dart
 import 'package:fatura_yeni/core/services/firebase_service.dart';
 import 'package:fatura_yeni/core/services/storage_service.dart';
+import 'package:fatura_yeni/core/services/websocket_service.dart';
 import 'package:fatura_yeni/features/auth/screens/login_register_screen.dart';
+import 'package:fatura_yeni/features/dashboard/providers/dashboard_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
@@ -34,8 +37,18 @@ class _AccountScreenState extends State<AccountScreen> {
       _isLoading = true;
     });
     try {
+      // Token'ı, WebSocket bağlantısını ve dashboard verilerini temizle
       await _storageService.deleteToken();
       await _firebaseService.signOut();
+      WebSocketService().disconnect();
+
+      // Dashboard verilerini temizle
+      if (mounted) {
+        final dashboardProvider =
+            Provider.of<DashboardProvider>(context, listen: false);
+        dashboardProvider.clearData();
+      }
+
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginRegisterScreen()),

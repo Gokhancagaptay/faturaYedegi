@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -11,10 +10,12 @@ import 'package:intl/intl.dart';
 import 'package:fatura_yeni/core/services/api_service.dart';
 import 'package:fatura_yeni/core/services/storage_service.dart';
 import 'package:fatura_yeni/core/services/report_service.dart';
+import 'package:fatura_yeni/core/services/websocket_service.dart';
 
 import 'package:fatura_yeni/core/providers/theme_provider.dart';
 import 'package:fatura_yeni/core/constants/dashboard_constants.dart';
 import 'package:fatura_yeni/features/dashboard/models/invoice_model.dart';
+import 'package:fatura_yeni/features/dashboard/providers/dashboard_provider.dart';
 import 'package:fatura_yeni/features/auth/screens/login_register_screen.dart';
 import 'package:fatura_yeni/features/invoices/screens/invoice_detail_screen.dart';
 
@@ -1443,7 +1444,17 @@ class _PackageDetailScreenState extends State<PackageDetailScreen> {
 
   void _logout() async {
     try {
+      // Token'ı, WebSocket bağlantısını ve dashboard verilerini temizle
       await _storageService.deleteToken();
+      WebSocketService().disconnect();
+
+      // Dashboard verilerini temizle
+      if (mounted) {
+        final dashboardProvider =
+            Provider.of<DashboardProvider>(context, listen: false);
+        dashboardProvider.clearData();
+      }
+
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginRegisterScreen()),
