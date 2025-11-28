@@ -13,9 +13,17 @@ import 'package:fatura_yeni/core/providers/theme_provider.dart';
 import 'package:fatura_yeni/features/auth/screens/login_register_screen.dart'; // Doğru başlangıç ekranı
 import 'package:fatura_yeni/features/dashboard/providers/dashboard_provider.dart';
 import 'package:fatura_yeni/firebase_options.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Environment variables'ı yükle
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    print('⚠️ .env dosyası yüklenemedi, varsayılan değerler kullanılacak: $e');
+  }
 
   // Firebase'i güvenli şekilde başlat
   try {
@@ -70,7 +78,7 @@ class MyApp extends StatelessWidget {
             title: 'Fatura Yönetim Sistemi',
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
-            themeMode: themeProvider?.isDarkMode == true
+            themeMode: themeProvider.isDarkMode == true
                 ? ThemeMode.dark
                 : ThemeMode.light,
             home: const LoginRegisterScreen(), // AuthWrapper yerine

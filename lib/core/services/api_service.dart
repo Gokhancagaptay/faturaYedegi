@@ -2,16 +2,22 @@
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
-import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 import 'dart:io' show SocketException;
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiService {
-  // Backend URL seçimi: Platform'a göre otomatik
+  // Backend URL seçimi: Environment variable'dan oku, yoksa varsayılan değerleri kullan
   static String get _baseUrl {
+    // Önce environment variable'dan oku
+    final envUrl = dotenv.env['API_BASE_URL'];
+    if (envUrl != null && envUrl.isNotEmpty) {
+      return envUrl;
+    }
+    
+    // Environment variable yoksa platform bazlı varsayılan değerler
     if (kIsWeb) {
       // Web'de çalışırken
       return 'http://localhost:3000';
@@ -22,8 +28,15 @@ class ApiService {
     }
   }
 
-  // WebSocket URL seçimi
+  // WebSocket URL seçimi: Environment variable'dan oku, yoksa varsayılan değerleri kullan
   static String get _socketUrl {
+    // Önce environment variable'dan oku
+    final envUrl = dotenv.env['WS_BASE_URL'];
+    if (envUrl != null && envUrl.isNotEmpty) {
+      return envUrl;
+    }
+    
+    // Environment variable yoksa platform bazlı varsayılan değerler
     if (kIsWeb) {
       return 'ws://localhost:3000';
     } else {

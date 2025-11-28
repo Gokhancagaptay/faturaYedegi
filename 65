@@ -1,0 +1,1416 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../../../core/constants/dashboard_constants.dart';
+import '../../../core/providers/theme_provider.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/services/storage_service.dart';
+import '../../../features/auth/screens/login_register_screen.dart';
+
+class PackageDetailScreen extends StatefulWidget {
+  final String packageId;
+
+  const PackageDetailScreen({
+    Key? key,
+    required this.packageId,
+  }) : super(key: key);
+
+  @override
+  State<PackageDetailScreen> createState() => _PackageDetailScreenState();
+}
+
+class _PackageDetailScreenState extends State<PackageDetailScreen>
+    with TickerProviderStateMixin {
+  Map<String, dynamic>? _packageData;
+  bool _isLoading = true;
+  String? _errorMessage;
+  Set<int> _expandedCards = {};
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+  final ApiService _apiService = ApiService();
+  final StorageService _storageService = StorageService();
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
+    );
+    _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAll() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final token = await _storageService.getToken();
+      print(
+          '🔐 Package Detail - Token kontrol ediliyor: ${token != null ? 'VAR' : 'YOK'}');
+      if (token != null) {
+        print('🔐 Package Detail - Token değeri: ${token.substring(0, 10)}...');
+      }
+
+      if (token == null) {
+        throw Exception('Token bulunamadı');
+      }
+
+      // Önce paket bilgilerini al
+      final packageData = await _apiService.getPackageDetail(
+        token,
+        widget.packageId,
+      );
+
+      print('🔐 Package Detail - Paket verisi alındı: $packageData');
+
+      // Sonra paketteki faturaları al
+      final packageInvoices = await _apiService.getPackageInvoices(
+        token,
+        widget.packageId,
+      );
+
+      print('🔐 Package Detail - Fatura verisi alındı: $packageInvoices');
+
+      // Paket verisi ile fatura verisini birleştir
+      final combinedData = <String, dynamic>{
+        ...packageData['package'] ?? packageData,
+        'invoices': packageInvoices['invoices'] ?? [],
+      };
+
+      setState(() {
+        _packageData = combinedData;
+        _isLoading = false;
+      });
+
+      _fadeController.forward();
+    } catch (e) {
+      print('❌ Package Detail - Hata: $e');
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _toggleCardExpansion(int index) {
+    setState(() {
+      if (_expandedCards.contains(index)) {
+        _expandedCards.remove(index);
+      } else {
+        _expandedCards.add(index);
+      }
+    });
+  }
+
+  String _decodeFileName(String? encodedName) {
+    if (encodedName == null) return 'Bilinmeyen Dosya';
+    try {
+      final bytes = base64Decode(encodedName);
+      return utf8.decode(bytes);
+    } catch (e) {
+      return encodedName;
+    }
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'Tarih belirtilmemiş';
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  // Responsive helper methods
+  double _getResponsivePadding(BuildContext context) {
+    return DashboardConstants.getResponsivePadding(context);
+  }
+
+  double _getResponsiveSpacing(BuildContext context) {
+    return DashboardConstants.getResponsiveSpacing(context);
+  }
+
+  double _getResponsiveFontSize(BuildContext context, double baseSize) {
+    return DashboardConstants.getResponsiveFontSize(context, baseSize);
+  }
+
+  double _getResponsiveContainerSize(BuildContext context, double baseSize) {
+    return DashboardConstants.getResponsiveContainerSize(context, baseSize);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
+    final colors = DashboardConstants.getColors(isDarkMode);
+
+    return Scaffold(
+      backgroundColor: colors['background'],
+      body: _isLoading
+          ? _buildLoadingState(colors)
+          : _errorMessage != null
+              ? _buildErrorState(colors)
+              : _buildMainContent(isDarkMode, colors),
+    );
+  }
+
+  Widget _buildLoadingState(Map<String, dynamic> colors) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(
+            color: colors['primaryBlue'],
+            strokeWidth: 3,
+          ),
+          SizedBox(height: _getResponsiveSpacing(context)),
+          Text(
+            'Paket yükleniyor...',
+            style: TextStyle(
+              color: colors['text'],
+              fontSize: _getResponsiveFontSize(context, 16),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(Map<String, dynamic> colors) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: _getResponsiveContainerSize(context, 64),
+            color: colors['errorRed'],
+          ),
+          SizedBox(height: _getResponsiveSpacing(context)),
+          Text(
+            'Paket bulunamadı',
+            style: TextStyle(
+              color: colors['text'],
+              fontSize: _getResponsiveFontSize(context, 18),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          SizedBox(height: _getResponsiveSpacing(context) * 0.5),
+          Text(
+            'Lütfen tekrar deneyin',
+            style: TextStyle(
+              color: colors['textSecondary'],
+              fontSize: _getResponsiveFontSize(context, 14),
+            ),
+          ),
+          SizedBox(height: _getResponsiveSpacing(context) * 1.5),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton.icon(
+                onPressed: _loadAll,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Tekrar Dene'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colors['primaryBlue'],
+                  foregroundColor: colors['white'],
+                  padding: EdgeInsets.symmetric(
+                    horizontal: _getResponsivePadding(context) * 1.5,
+                    vertical: _getResponsiveSpacing(context) * 0.75,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(DashboardConstants.buttonRadius),
+                  ),
+                ),
+              ),
+              SizedBox(height: _getResponsiveSpacing(context)),
+              ElevatedButton.icon(
+                onPressed: () => _logout(context),
+                icon: const Icon(Icons.logout),
+                label: const Text('Giriş Yap'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colors['accentAmber'],
+                  foregroundColor: colors['white'],
+                  padding: EdgeInsets.symmetric(
+                    horizontal: _getResponsivePadding(context) * 1.5,
+                    vertical: _getResponsiveSpacing(context) * 0.75,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(DashboardConstants.buttonRadius),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _logout(BuildContext context) async {
+    try {
+      await _storageService.deleteToken();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => const LoginRegisterScreen(),
+          ),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      // Hata durumunda da giriş ekranına yönlendir
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => const LoginRegisterScreen(),
+          ),
+          (route) => false,
+        );
+      }
+    }
+  }
+
+  Widget _buildMainContent(bool isDarkMode, Map<String, dynamic> colors) {
+    return CustomScrollView(
+      slivers: [
+        // Custom App Bar
+        _buildCustomAppBar(isDarkMode, colors),
+
+        // Akıllı Özet ve Eylem Merkezi
+        _buildSmartSummarySection(isDarkMode, colors),
+
+        // Etkileşimli Fatura Listesi
+        _buildInteractiveInvoiceList(isDarkMode, colors),
+      ],
+    );
+  }
+
+  Widget _buildCustomAppBar(bool isDarkMode, Map<String, dynamic> colors) {
+    return SliverAppBar(
+      expandedHeight: _getResponsiveContainerSize(context, 80),
+      floating: false,
+      pinned: true,
+      backgroundColor: colors['surface'],
+      elevation: 0,
+      shadowColor: Colors.transparent,
+      flexibleSpace: FlexibleSpaceBar(
+        title: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Text(
+            'Paket Raporu',
+            style: TextStyle(
+              color: colors['text'],
+              fontSize: _getResponsiveFontSize(context, 24),
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.5,
+            ),
+          ),
+        ),
+        centerTitle: true,
+        background: Container(
+          decoration: BoxDecoration(
+            color: colors['surface'],
+            boxShadow: [
+              BoxShadow(
+                color: isDarkMode
+                    ? Colors.black.withOpacity(0.1)
+                    : Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        // Responsive Tekrar Değerlendir butonu
+        Container(
+          margin: EdgeInsets.only(right: _getResponsivePadding(context)),
+          child: _buildResponsiveReevaluateButton(colors),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResponsiveReevaluateButton(Map<String, dynamic> colors) {
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    // Mobil cihazlarda sadece ikon göster
+    if (screenWidth < DashboardConstants.mobileBreakpoint) {
+      return IconButton(
+        onPressed: _showReevaluateConfirmation,
+        icon: Icon(
+          Icons.refresh,
+          size: _getResponsiveContainerSize(context, 24),
+          color: colors['accentAmber'],
+        ),
+        tooltip: 'Tekrar Değerlendir',
+        style: IconButton.styleFrom(
+          backgroundColor: colors['accentAmber'].withOpacity(0.1),
+          shape: RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(DashboardConstants.buttonRadius),
+          ),
+        ),
+      );
+    }
+
+    // Tablet ve desktop'ta tam buton göster
+    return ElevatedButton.icon(
+      onPressed: _showReevaluateConfirmation,
+      icon: Icon(
+        Icons.refresh,
+        size: _getResponsiveContainerSize(context, 18),
+      ),
+      label: Text(
+        'Tekrar Değerlendir',
+        style: TextStyle(
+          fontSize: _getResponsiveFontSize(context, 14),
+        ),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: colors['accentAmber'],
+        foregroundColor: colors['white'],
+        padding: EdgeInsets.symmetric(
+          horizontal: _getResponsivePadding(context),
+          vertical: _getResponsiveSpacing(context) * 0.5,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(DashboardConstants.buttonRadius),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmartSummarySection(
+      bool isDarkMode, Map<String, dynamic> colors) {
+    if (_packageData == null) return const SliverToBoxAdapter();
+
+    final invoices = _packageData!['invoices'] as List<dynamic>? ?? [];
+    print('🔐 Package Detail - Fatura sayısı: ${invoices.length}');
+    print('🔐 Package Detail - Fatura verileri: $invoices');
+
+    final totalAmount = invoices.fold<double>(
+      0.0,
+      (sum, invoice) => sum + (invoice['totalAmount'] ?? 0.0),
+    );
+
+    return SliverToBoxAdapter(
+      child: Container(
+        margin: EdgeInsets.all(_getResponsivePadding(context)),
+        padding: EdgeInsets.all(_getResponsivePadding(context) * 1.25),
+        decoration: BoxDecoration(
+          color: colors['surface'],
+          borderRadius: BorderRadius.circular(DashboardConstants.cardRadius),
+          boxShadow: isDarkMode
+              ? null
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding:
+                      EdgeInsets.all(_getResponsiveSpacing(context) * 0.75),
+                  decoration: BoxDecoration(
+                    color: (colors['primaryBlue'] as Color).withOpacity(0.1),
+                    borderRadius:
+                        BorderRadius.circular(DashboardConstants.cardRadius),
+                  ),
+                  child: Icon(
+                    Icons.assessment,
+                    color: colors['primaryBlue'],
+                    size: _getResponsiveContainerSize(context, 24),
+                  ),
+                ),
+                SizedBox(width: _getResponsiveSpacing(context)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Akıllı Özet',
+                        style: TextStyle(
+                          color: colors['text'],
+                          fontSize: _getResponsiveFontSize(context, 20),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(height: _getResponsiveSpacing(context) * 0.25),
+                      Text(
+                        'Paket detayları ve analiz sonuçları',
+                        style: TextStyle(
+                          color: colors['textSecondary'],
+                          fontSize: _getResponsiveFontSize(context, 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: _getResponsiveSpacing(context) * 1.25),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildSummaryCard(
+                    'Toplam Tutar',
+                    '₺${totalAmount.toStringAsFixed(2)}',
+                    Icons.account_balance_wallet,
+                    colors,
+                  ),
+                ),
+                SizedBox(width: _getResponsiveSpacing(context) * 0.75),
+                Expanded(
+                  child: _buildSummaryCard(
+                    'Fatura Sayısı',
+                    '${invoices.length}',
+                    Icons.description,
+                    colors,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: _getResponsiveSpacing(context)),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _showExportOptions(),
+                icon: Icon(Icons.download),
+                label: const Text('Raporu Dışa Aktar'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colors['primaryBlue'],
+                  foregroundColor: colors['white'],
+                  padding: EdgeInsets.symmetric(
+                    vertical: _getResponsiveSpacing(context) * 0.75,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(DashboardConstants.buttonRadius),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard(
+      String title, String value, IconData icon, Map<String, dynamic> colors) {
+    return Container(
+      padding: EdgeInsets.all(_getResponsiveSpacing(context)),
+      decoration: BoxDecoration(
+        color: colors['cardBackground'],
+        borderRadius: BorderRadius.circular(DashboardConstants.cardRadius),
+        border: Border.all(
+          color: colors['textSecondary'].withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                icon,
+                color: colors['primaryBlue'],
+                size: _getResponsiveContainerSize(context, 20),
+              ),
+              SizedBox(width: _getResponsiveSpacing(context) * 0.5),
+              Text(
+                title,
+                style: TextStyle(
+                  color: colors['textSecondary'],
+                  fontSize: _getResponsiveFontSize(context, 12),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: _getResponsiveSpacing(context) * 0.5),
+          Text(
+            value,
+            style: TextStyle(
+              color: colors['text'],
+              fontSize: _getResponsiveFontSize(context, 18),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInteractiveInvoiceList(
+      bool isDarkMode, Map<String, dynamic> colors) {
+    if (_packageData == null) return const SliverToBoxAdapter();
+
+    final invoices = _packageData!['invoices'] as List<dynamic>? ?? [];
+    print(
+        '🔐 Package Detail - Interactive List - Fatura sayısı: ${invoices.length}');
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          final invoice = invoices[index];
+          final isExpanded = _expandedCards.contains(index);
+
+          return Container(
+            margin: EdgeInsets.symmetric(
+              horizontal: _getResponsivePadding(context),
+              vertical: _getResponsiveSpacing(context) * 0.5,
+            ),
+            child: _buildInvoiceCard(
+                invoice, index, isExpanded, isDarkMode, colors),
+          );
+        },
+        childCount: invoices.length,
+      ),
+    );
+  }
+
+  Widget _buildInvoiceCard(Map<String, dynamic> invoice, int index,
+      bool isExpanded, bool isDarkMode, Map<String, dynamic> colors) {
+    final sellerName = invoice['sellerName'] ?? 'Bilinmeyen Satıcı';
+    final totalAmount = invoice['totalAmount'] ?? 0.0;
+    final vatAmount = invoice['vatAmount'] ?? 0.0;
+    final invoiceDate = invoice['invoiceDate'] != null
+        ? DateTime.parse(invoice['invoiceDate'])
+        : null;
+    final invoiceNumber = invoice['invoiceNumber'] ?? 'N/A';
+    final fileName = _decodeFileName(invoice['originalName']);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        color: colors['surface'],
+        borderRadius: BorderRadius.circular(DashboardConstants.cardRadius),
+        boxShadow: isDarkMode
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(DashboardConstants.cardRadius),
+          onTap: () => _toggleCardExpansion(index),
+          child: Padding(
+            padding: EdgeInsets.all(_getResponsivePadding(context)),
+            child: Column(
+              children: [
+                // Kapalı Durum
+                Row(
+                  children: [
+                    // Sol Taraf: Logo/Avatar + Satıcı Bilgileri
+                    Container(
+                      width: _getResponsiveContainerSize(context, 40),
+                      height: _getResponsiveContainerSize(context, 40),
+                      decoration: BoxDecoration(
+                        color: colors['primaryBlue'].withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(
+                            DashboardConstants.imageRadius),
+                      ),
+                      child: Center(
+                        child: Text(
+                          sellerName.isNotEmpty
+                              ? sellerName[0].toUpperCase()
+                              : 'F',
+                          style: TextStyle(
+                            color: colors['primaryBlue'],
+                            fontSize: _getResponsiveFontSize(context, 18),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: _getResponsiveSpacing(context)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            sellerName,
+                            style: TextStyle(
+                              color: colors['text'],
+                              fontSize: _getResponsiveFontSize(context, 18),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (invoiceDate != null) ...[
+                            SizedBox(
+                                height: _getResponsiveSpacing(context) * 0.25),
+                            Text(
+                              _formatDate(invoiceDate),
+                              style: TextStyle(
+                                color: colors['textSecondary'],
+                                fontSize: _getResponsiveFontSize(context, 14),
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // Sağ Taraf: Tutar + Chevron
+                    Row(
+                      children: [
+                        Text(
+                          '₺${totalAmount.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            color: colors['text'],
+                            fontSize: _getResponsiveFontSize(context, 18),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(width: _getResponsiveSpacing(context) * 0.5),
+                        AnimatedRotation(
+                          turns: isExpanded ? 0.5 : 0.0,
+                          duration: const Duration(milliseconds: 300),
+                          child: Icon(
+                            Icons.keyboard_arrow_down,
+                            color: colors['textSecondary'],
+                            size: _getResponsiveContainerSize(context, 24),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                // Kapalı Durumda Hızlı İşlem Butonları
+                if (!isExpanded) ...[
+                  SizedBox(height: _getResponsiveSpacing(context) * 0.75),
+                  Row(
+                    children: [
+                      // Fatura Görüntüle Butonu
+                      Expanded(
+                        child: SizedBox(
+                          height: _getResponsiveContainerSize(context, 32),
+                          child: OutlinedButton.icon(
+                            onPressed: () => _navigateToInvoiceDetail(invoice),
+                            icon: Icon(
+                              Icons.visibility,
+                              size: _getResponsiveContainerSize(context, 16),
+                            ),
+                            label: Text(
+                              'Görüntüle',
+                              style: TextStyle(
+                                fontSize: _getResponsiveFontSize(context, 12),
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: colors['textSecondary'],
+                              side: BorderSide(
+                                color: colors['textSecondary'].withOpacity(0.2),
+                              ),
+                              padding: EdgeInsets.symmetric(
+                                horizontal:
+                                    _getResponsivePadding(context) * 0.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: _getResponsiveSpacing(context) * 0.5),
+
+                      // Fatura Raporu Butonu
+                      Expanded(
+                        child: SizedBox(
+                          height: _getResponsiveContainerSize(context, 32),
+                          child: ElevatedButton.icon(
+                            onPressed: () => _showInvoiceReportOptions(invoice),
+                            icon: Icon(
+                              Icons.assessment,
+                              size: _getResponsiveContainerSize(context, 16),
+                            ),
+                            label: Text(
+                              'Rapor',
+                              style: TextStyle(
+                                fontSize: _getResponsiveFontSize(context, 12),
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: colors['primaryBlue'],
+                              foregroundColor: colors['white'],
+                              padding: EdgeInsets.symmetric(
+                                horizontal:
+                                    _getResponsivePadding(context) * 0.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                // Genişletilmiş Durum
+                if (isExpanded) ...[
+                  SizedBox(height: _getResponsiveSpacing(context)),
+                  const Divider(),
+                  SizedBox(height: _getResponsiveSpacing(context)),
+
+                  // Fatura Önizlemesi
+                  if (invoice['thumbnailUrl'] != null) ...[
+                    GestureDetector(
+                      onTap: () =>
+                          _showFullScreenImage(invoice['thumbnailUrl']),
+                      child: Container(
+                        width: double.infinity,
+                        height: _getResponsiveContainerSize(context, 200),
+                        decoration: BoxDecoration(
+                          color: colors['cardBackground'],
+                          borderRadius: BorderRadius.circular(
+                              DashboardConstants.cardRadius),
+                          border: Border.all(
+                            color: colors['textSecondary'].withOpacity(0.1),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: isDarkMode
+                                  ? Colors.black.withOpacity(0.2)
+                                  : Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Stack(
+                          children: [
+                            // Ana Fatura Resmi - Optimal Kaplama
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(
+                                  DashboardConstants.cardRadius),
+                              child: Image.network(
+                                invoice['thumbnailUrl'],
+                                width: double.infinity,
+                                height: double.infinity,
+                                fit: BoxFit.contain,
+                                loadingBuilder:
+                                    (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Center(
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        CircularProgressIndicator(
+                                          value: loadingProgress
+                                                      .expectedTotalBytes !=
+                                                  null
+                                              ? loadingProgress
+                                                      .cumulativeBytesLoaded /
+                                                  loadingProgress
+                                                      .expectedTotalBytes!
+                                              : null,
+                                          strokeWidth: 3,
+                                          color: colors['primaryBlue'],
+                                        ),
+                                        SizedBox(
+                                            height:
+                                                _getResponsiveSpacing(context) *
+                                                    0.5),
+                                        Text(
+                                          'Fatura yükleniyor...',
+                                          style: TextStyle(
+                                            color: colors['textSecondary'],
+                                            fontSize: _getResponsiveFontSize(
+                                                context, 12),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Center(
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.description,
+                                          color: colors['textSecondary'],
+                                          size: _getResponsiveContainerSize(
+                                              context, 48),
+                                        ),
+                                        SizedBox(
+                                            height:
+                                                _getResponsiveSpacing(context) *
+                                                    0.5),
+                                        Text(
+                                          'Fatura görüntülenemedi',
+                                          style: TextStyle(
+                                            color: colors['textSecondary'],
+                                            fontSize: _getResponsiveFontSize(
+                                                context, 12),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            // Yakınlaştırma İkonu
+                            Positioned(
+                              top: _getResponsiveSpacing(context) * 0.5,
+                              right: _getResponsiveSpacing(context) * 0.5,
+                              child: Container(
+                                padding: EdgeInsets.all(
+                                    _getResponsiveSpacing(context) * 0.375),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.6),
+                                  borderRadius: BorderRadius.circular(
+                                      DashboardConstants.imageRadius),
+                                ),
+                                child: Icon(
+                                  Icons.zoom_in,
+                                  color: Colors.white,
+                                  size:
+                                      _getResponsiveContainerSize(context, 16),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: _getResponsiveSpacing(context)),
+                  ],
+
+                  // Detay Alanları
+                  Column(
+                    children: [
+                      _buildDetailRow('Fatura No', invoiceNumber, colors),
+                      _buildDetailRow('KDV Tutarı',
+                          '₺${vatAmount.toStringAsFixed(2)}', colors),
+                      _buildDetailRow('Dosya Adı', fileName, colors),
+                      if (invoice['processingMs'] != null)
+                        _buildDetailRow('İşlem Süresi',
+                            '${invoice['processingMs']}ms', colors),
+                    ],
+                  ),
+
+                  SizedBox(height: _getResponsiveSpacing(context)),
+
+                  // Faturaya Özel Eylem Butonları
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _navigateToInvoiceDetail(invoice),
+                          icon: Icon(
+                            Icons.description,
+                            size: _getResponsiveContainerSize(context, 18),
+                          ),
+                          label: const Text('Faturayı Görüntüle'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: colors['textSecondary'],
+                            side: BorderSide(
+                              color: colors['textSecondary'].withOpacity(0.2),
+                            ),
+                            padding: EdgeInsets.symmetric(
+                              vertical: _getResponsiveSpacing(context) * 0.75,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: _getResponsiveSpacing(context) * 0.75),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _copyInvoiceData(invoice),
+                          icon: Icon(
+                            Icons.copy,
+                            size: _getResponsiveContainerSize(context, 18),
+                          ),
+                          label: const Text('Veriyi Kopyala'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: colors['textSecondary'],
+                            side: BorderSide(
+                              color: colors['textSecondary'].withOpacity(0.2),
+                            ),
+                            padding: EdgeInsets.symmetric(
+                              vertical: _getResponsiveSpacing(context) * 0.75,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  SizedBox(height: _getResponsiveSpacing(context) * 0.75),
+
+                  // Faturaya Özel Rapor Butonu
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showInvoiceReportOptions(invoice),
+                      icon: Icon(
+                        Icons.assessment,
+                        size: _getResponsiveContainerSize(context, 18),
+                      ),
+                      label: const Text('Fatura Raporu Al'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: colors['primaryBlue'],
+                        foregroundColor: colors['white'],
+                        padding: EdgeInsets.symmetric(
+                          vertical: _getResponsiveSpacing(context) * 0.75,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                              DashboardConstants.buttonRadius),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(
+      String label, String value, Map<String, dynamic> colors) {
+    return Padding(
+      padding:
+          EdgeInsets.symmetric(vertical: _getResponsiveSpacing(context) * 0.25),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: _getResponsiveContainerSize(context, 100),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: colors['textSecondary'],
+                fontSize: _getResponsiveFontSize(context, 14),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: colors['text'],
+                fontSize: _getResponsiveFontSize(context, 14),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReevaluateConfirmation() {
+    final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
+    final colors = DashboardConstants.getColors(isDarkMode);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: colors['surface'],
+        title: Text(
+          'Paketi Tekrar Değerlendir',
+          style: TextStyle(
+            color: colors['text'],
+            fontSize: _getResponsiveFontSize(context, 18),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          'Bu paketi tekrar değerlendirmek istediğinizden emin misiniz? Bu işlem biraz zaman alabilir.',
+          style: TextStyle(
+            color: colors['textSecondary'],
+            fontSize: _getResponsiveFontSize(context, 14),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'İptal',
+              style: TextStyle(
+                color: colors['textSecondary'],
+                fontSize: _getResponsiveFontSize(context, 14),
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _reevaluatePackage();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colors['accentAmber'],
+              foregroundColor: colors['white'],
+            ),
+            child: const Text('Tekrar Değerlendir'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _reevaluatePackage() async {
+    try {
+      final token = await _storageService.getToken();
+      if (token == null) {
+        throw Exception('Token bulunamadı');
+      }
+
+      await _apiService.reevaluatePackage(token, widget.packageId);
+
+      final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
+      final colors = DashboardConstants.getColors(isDarkMode);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Paket başarıyla yeniden değerlendirildi!'),
+            backgroundColor: colors['successGreen'],
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        _loadAll();
+      }
+    } catch (e) {
+      final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
+      final colors = DashboardConstants.getColors(isDarkMode);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hata: ${e.toString()}'),
+            backgroundColor: colors['errorRed'],
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showExportOptions() {
+    final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
+    final colors = DashboardConstants.getColors(isDarkMode);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Dışa aktarma seçenekleri yakında eklenecek!'),
+        backgroundColor: colors['accentAmber'],
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showInvoiceReportOptions(Map<String, dynamic> invoice) {
+    final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
+    final colors = DashboardConstants.getColors(isDarkMode);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: colors['surface'],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(_getResponsiveContainerSize(context, 20)),
+        ),
+      ),
+      builder: (context) => Container(
+        padding: EdgeInsets.all(_getResponsivePadding(context) * 1.25),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: _getResponsiveContainerSize(context, 40),
+              height: _getResponsiveContainerSize(context, 4),
+              decoration: BoxDecoration(
+                color: colors['textSecondary'].withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            SizedBox(height: _getResponsiveSpacing(context) * 1.25),
+            Text(
+              'Fatura Raporu Seçenekleri',
+              style: TextStyle(
+                color: colors['text'],
+                fontSize: _getResponsiveFontSize(context, 18),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: _getResponsiveSpacing(context) * 1.25),
+            ListTile(
+              leading: Icon(
+                Icons.copy,
+                color: colors['primaryBlue'],
+                size: _getResponsiveContainerSize(context, 24),
+              ),
+              title: const Text('Veriyi Kopyala'),
+              subtitle: const Text('Fatura verilerini panoya kopyala'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _copyInvoiceData(invoice);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.picture_as_pdf,
+                color: colors['primaryBlue'],
+                size: _getResponsiveFontSize(context, 24),
+              ),
+              title: const Text('PDF Raporu'),
+              subtitle:
+                  const Text('Fatura verilerini PDF formatında dışa aktar'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _exportInvoicePDF(invoice);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.table_chart,
+                color: colors['primaryBlue'],
+                size: _getResponsiveFontSize(context, 24),
+              ),
+              title: const Text('Excel Raporu'),
+              subtitle:
+                  const Text('Fatura verilerini Excel formatında dışa aktar'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _exportInvoiceExcel(invoice);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.description,
+                color: colors['primaryBlue'],
+                size: _getResponsiveFontSize(context, 24),
+              ),
+              title: const Text('JSON Raporu'),
+              subtitle: const Text('Ham veriyi JSON formatında dışa aktar'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _exportInvoiceJSON(invoice);
+              },
+            ),
+            SizedBox(height: _getResponsiveSpacing(context)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _copyInvoiceData(Map<String, dynamic> invoice) {
+    final data = {
+      'Fatura No': invoice['invoiceNumber'] ?? 'N/A',
+      'Satıcı': invoice['sellerName'] ?? 'Bilinmeyen Satıcı',
+      'Tutar': '₺${(invoice['totalAmount'] ?? 0.0).toStringAsFixed(2)}',
+      'KDV': '₺${(invoice['vatAmount'] ?? 0.0).toStringAsFixed(2)}',
+      'Tarih': _formatDate(invoice['invoiceDate']),
+    };
+
+    final jsonString = const JsonEncoder.withIndent('  ').convert(data);
+    Clipboard.setData(ClipboardData(text: jsonString));
+
+    final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
+    final colors = DashboardConstants.getColors(isDarkMode);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Fatura verisi panoya kopyalandı!'),
+        backgroundColor: colors['successGreen'],
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _navigateToInvoiceDetail(Map<String, dynamic> invoice) {
+    // TODO: InvoiceDetailScreen implementasyonu
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fatura detay sayfası yakında eklenecek!'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
+  // Fatura Raporu Export Metodları
+  void _exportInvoicePDF(Map<String, dynamic> invoice) {
+    // TODO: PDF export implementasyonu
+    final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
+    final colors = DashboardConstants.getColors(isDarkMode);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('PDF export özelliği yakında eklenecek!'),
+        backgroundColor: colors['accentAmber'],
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _exportInvoiceExcel(Map<String, dynamic> invoice) {
+    // TODO: Excel export implementasyonu
+    final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
+    final colors = DashboardConstants.getColors(isDarkMode);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Excel export özelliği yakında eklenecek!'),
+        backgroundColor: colors['accentAmber'],
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _exportInvoiceJSON(Map<String, dynamic> invoice) {
+    // JSON export - mevcut veriyi kopyala
+    final data = {
+      'invoiceId': invoice['id'],
+      'sellerName': invoice['sellerName'] ?? 'Bilinmeyen Satıcı',
+      'totalAmount': invoice['totalAmount'] ?? 0.0,
+      'vatAmount': invoice['vatAmount'] ?? 0.0,
+      'invoiceDate': _formatDate(invoice['invoiceDate']),
+      'invoiceNumber': invoice['invoiceNumber'] ?? 'N/A',
+      'status': invoice['status'] ?? 'unknown',
+      'structured': invoice['structured'] ?? {},
+      'ocrText': invoice['ocrText'] ?? '',
+      'fileUrl': invoice['fileUrl'] ?? '',
+      'thumbnailUrl': invoice['thumbnailUrl'] ?? '',
+    };
+
+    final jsonString = const JsonEncoder.withIndent('  ').convert(data);
+    Clipboard.setData(ClipboardData(text: jsonString));
+
+    final isDarkMode = context.watch<ThemeProvider>().isDarkMode;
+    final colors = DashboardConstants.getColors(isDarkMode);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Fatura JSON verisi panoya kopyalandı!'),
+        backgroundColor: colors['successGreen'],
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // Tam Ekran Fatura Görüntüleme - Gelişmiş Yakınlaştırma ve Pan Özellikleri
+  void _showFullScreenImage(String imageUrl) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text('Fatura Görüntüle'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.download),
+                onPressed: () {
+                  // TODO: Fatura resmini indir
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('İndirme özelliği yakında eklenecek!'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5, // Minimum yakınlaştırma
+              maxScale: 4.0, // Maksimum yakınlaştırma
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                          strokeWidth: 3,
+                          color: Colors.white,
+                        ),
+                        SizedBox(height: _getResponsiveSpacing(context)),
+                        Text(
+                          'Fatura yükleniyor...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: _getResponsiveFontSize(context, 16),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          color: Colors.white,
+                          size: _getResponsiveContainerSize(context, 64),
+                        ),
+                        SizedBox(height: _getResponsiveSpacing(context)),
+                        Text(
+                          'Fatura resmi yüklenemedi',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: _getResponsiveFontSize(context, 18),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

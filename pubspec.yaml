@@ -15,6 +15,7 @@ dependencies:
   
   # API İstekleri
   http: ^1.2.1
+  flutter_dotenv: ^5.1.0
   
   # Vektörel İkonlar
   flutter_svg: ^2.0.10+1
@@ -85,3 +86,4 @@ flutter:
   # Uygulama varlıkları (resim, json vb.)
   assets:
     - assets/
+    - .env

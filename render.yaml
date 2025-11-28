@@ -1,0 +1,40 @@
+# Render.com Deployment Configuration
+# Bu dosya Render.com'da otomatik deployment için kullanılır
+
+services:
+  # Backend Service (Node.js)
+  - type: web
+    name: fatura-backend
+    env: node
+    plan: free  # Ücretsiz plan
+    buildCommand: cd fatura_backend && npm install
+    startCommand: cd fatura_backend && npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      # Firebase Admin SDK için gerekli environment variables
+      # Bu değerleri Render.com dashboard'dan ekleyeceksiniz:
+      # - FIREBASE_PROJECT_ID
+      # - FIREBASE_PRIVATE_KEY
+      # - FIREBASE_CLIENT_EMAIL
+      # - PARSER_URL (Python OCR servisinin URL'i)
+    healthCheckPath: /health
+
+  # Python OCR Parser Service
+  - type: web
+    name: fatura-parser
+    env: python
+    plan: free  # Ücretsiz plan
+    buildCommand: cd fatura_parser_py && pip install -r requirements.txt
+    startCommand: cd fatura_parser_py && gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 app:app
+    envVars:
+      - key: PORT
+        value: 5001
+      - key: PYTHONUNBUFFERED
+        value: 1
+      - key: ANALYSIS_VERBOSE
+        value: "false"
+    healthCheckPath: /health
+
