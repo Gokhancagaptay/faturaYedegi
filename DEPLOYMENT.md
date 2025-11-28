@@ -43,17 +43,19 @@ git push -u origin main
    
    **Branch:** `main` (veya `master`)
    
-   **Root Directory:** `fatura_parser_py`
+   **Root Directory:** `fatura_parser_py` (veya boş bırakın, aşağıdaki komutlarda tam yol kullanın)
    
    **Build Command:**
    ```bash
-   pip install -r requirements.txt
+   cd fatura_parser_py && pip install -r requirements.txt
    ```
+   (Eğer Root Directory ayarlıysa sadece: `pip install -r requirements.txt`)
    
    **Start Command:**
    ```bash
-   gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 app:app
+   cd fatura_parser_py && gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 app:app
    ```
+   (Eğer Root Directory ayarlıysa sadece: `gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 app:app`)
    
    **Plan:** `Free` (ücretsiz plan)
 
@@ -98,6 +100,10 @@ git push -u origin main
    - `PORT`: `3000`
    - `NODE_ENV`: `production`
    - `PARSER_URL`: `https://fatura-parser.onrender.com/parse_invoice` (Parser servisinin URL'i)
+   
+   **🔒 GÜVENLİK - ZORUNLU:**
+   - `JWT_SECRET`: Güçlü bir rastgele string (en az 32 karakter). Oluşturmak için: `openssl rand -base64 32`
+   - `ALLOWED_ORIGINS`: Flutter web uygulamanızın URL'leri (virgülle ayrılmış). Örn: `https://your-app.web.app,https://your-domain.com`
    
    **Firebase Admin SDK için gerekli değişkenler:**
    - `FIREBASE_PROJECT_ID`: Firebase projenizin ID'si

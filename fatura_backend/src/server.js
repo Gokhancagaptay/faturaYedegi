@@ -25,8 +25,11 @@ const app = express();
 // CORS ayarları - Production için environment variable'dan origin'leri al
 const corsOptions = {
   origin: process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',')
-    : '*', // Development için tüm origin'lere izin ver
+    ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+    : (process.env.NODE_ENV === 'production' 
+        ? [] // Production'da ALLOWED_ORIGINS zorunlu
+        : '*' // Development için tüm origin'lere izin ver
+      ),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],

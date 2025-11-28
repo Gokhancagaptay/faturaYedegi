@@ -19,7 +19,11 @@ const findOrCreateUser = async (phoneNumber) => {
             }
         }
 
-        const token = jwt.sign({ uid: user.uid, phoneNumber: user.phoneNumber }, process.env.JWT_SECRET || 'your_default_secret', {
+        // JWT_SECRET kontrolü
+        if (!process.env.JWT_SECRET) {
+            throw new Error('JWT_SECRET environment variable is required');
+        }
+        const token = jwt.sign({ uid: user.uid, phoneNumber: user.phoneNumber }, process.env.JWT_SECRET, {
             expiresIn: '7d',
         });
 
@@ -52,7 +56,11 @@ const registerWithPassword = async ({ name, email, phoneNumber, password }) => {
     createdAt: userDoc.createdAt,
     provider: 'password',
   });
-  const token = jwt.sign({ id: userDoc.id, email: userDoc.email, phoneNumber: userDoc.phoneNumber }, process.env.JWT_SECRET || 'your_default_secret', {
+  // JWT_SECRET kontrolü
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
+  const token = jwt.sign({ id: userDoc.id, email: userDoc.email, phoneNumber: userDoc.phoneNumber }, process.env.JWT_SECRET, {
     expiresIn: '7d',
   });
   return { user: userDoc, token };
@@ -66,7 +74,11 @@ const loginWithPassword = async ({ identifier, password }) => {
   }
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) throw new Error('Invalid credentials');
-  const token = jwt.sign({ id: user.id, email: user.email, phoneNumber: user.phoneNumber }, process.env.JWT_SECRET || 'your_default_secret', {
+  // JWT_SECRET kontrolü
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
+  const token = jwt.sign({ id: user.id, email: user.email, phoneNumber: user.phoneNumber }, process.env.JWT_SECRET, {
     expiresIn: '7d',
   });
   // Ensure top-level users doc exists/updated
@@ -101,7 +113,11 @@ module.exports.loginWithFirebaseIdToken = async (firebaseIdToken, phoneNumberHin
 
     await userRepo.createUserProfile(uid, { phoneNumber: userRecord.phoneNumber || phoneNumberHint, updatedAt: new Date() });
 
-    const token = jwt.sign({ uid, phoneNumber: userRecord.phoneNumber || phoneNumberHint }, process.env.JWT_SECRET || 'your_default_secret', {
+    // JWT_SECRET kontrolü
+    if (!process.env.JWT_SECRET) {
+      throw new Error('JWT_SECRET environment variable is required');
+    }
+    const token = jwt.sign({ uid, phoneNumber: userRecord.phoneNumber || phoneNumberHint }, process.env.JWT_SECRET, {
       expiresIn: '7d',
     });
     return { user: { uid, phoneNumber: userRecord.phoneNumber || phoneNumberHint }, token };
